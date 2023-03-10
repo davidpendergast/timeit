@@ -124,6 +124,9 @@ def start():
 
         row_widgets.append((playpause_btn, name_label, clear_btn, edit_btn))
 
+        for widget in row_widgets[-1]:
+            add_global_keybinds(widget)
+
     def remove_activity(i=-1):
         if i == -1:
             i = len(row_btns) - 1
@@ -142,6 +145,18 @@ def start():
             if i == active_row_var.get():
                 set_active_row(-1)
 
+    def add_global_keybinds(widget):
+        def move_active(i):
+            cur_active = active_row_var.get()
+            new_active = (cur_active + 1 + i) % (len(row_btns) + 1) - 1
+            if new_active >= 0:
+                row_btns[new_active].invoke()
+            else:
+                pause_btn.invoke()
+            return "break"
+        widget.bind("<Up>", lambda evt: move_active(-1))
+        widget.bind("<Down>", lambda evt: move_active(1))
+
     for idx in range(5):
         add_new_activity(idx)
 
@@ -152,7 +167,7 @@ def start():
     mainframe.grid_rowconfigure(2, weight=1)
 
     control_panel = ttk.Frame(mainframe)
-    control_panel.grid(column=0, row=3, sticky="w")
+    control_panel.grid(column=0, row=3, sticky="e")
 
     add_new_btn = ttk.Button(control_panel, text="Add Activity", command=lambda: add_new_activity(len(row_btns)))
     add_new_btn.grid(column=0, row=0)
