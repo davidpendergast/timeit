@@ -187,6 +187,7 @@ def start():
         root.title(f"{WINDOW_TITLE} [{label_text}]")
         root.after(dt, time_loop, dt)
 
+    add_global_keybinds(root)
     root.after(1000, time_loop, 1000)
 
     root.mainloop()
