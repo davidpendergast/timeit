@@ -1,31 +1,47 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import font
 from ttkthemes import ThemedTk
 
 import traceback
 
 
 WINDOW_TITLE = "TimeTracker"
-MAIN_FONT_NAME = 'DejaVu Sans Mono'
-MAIN_FONT_SIZE = 12
-TITLE_FONT = ("purisa", 24)
 MAIN_THEME = 'breeze'
 
+TITLE_FONT = None
+MAIN_FONT = None
 
-main_font = None
-entry_font = None
 
 def init_style():
-    global main_font, entry_font
+    global MAIN_FONT, TITLE_FONT
+
+    main_font_fallbacks = [('DejaVu Sans Mono', 14), ("Courier", 14)]
+    title_font_fallbacks = [("Purisa", 24), ("Ink Free", 24), ("Courier", 24)]
+
+    available_fonts = set(f for f in font.families())
+
+    MAIN_FONT = main_font_fallbacks[-1]
+    for fname, fsize in main_font_fallbacks:
+        if fname in available_fonts:
+            MAIN_FONT = (fname, fsize)
+            break
+
+    TITLE_FONT = title_font_fallbacks[-1]
+    for fname, fsize in title_font_fallbacks:
+        if fname in available_fonts:
+            TITLE_FONT = (fname, fsize)
+            break
+
     s = ttk.Style()
-    main_font = (MAIN_FONT_NAME, MAIN_FONT_SIZE)
-    s.configure('.', font=main_font)
-    entry_font = main_font
+    s.configure('.', font=MAIN_FONT)
 
 
 def start():
     root = ThemedTk(theme=MAIN_THEME)
     root.title(WINDOW_TITLE)
+    root.iconbitmap("icon/favicon.ico")
+
     init_style()
 
     root.grid_columnconfigure(0, weight=1)
@@ -99,11 +115,11 @@ def start():
             popupframe = ttk.Frame(popup, padding="4 4 4 4")
             popupframe.grid(column=0, row=0, sticky="nsew")
 
-            label = ttk.Label(popupframe, text="Add/Subtract Minutes", font=main_font, anchor=tk.CENTER)
+            label = ttk.Label(popupframe, text="Add/Subtract Minutes", font=MAIN_FONT, anchor=tk.CENTER)
             label.grid(column=0, row=0, sticky="ew")
 
             edit_var = tk.StringVar()
-            entry = ttk.Entry(popupframe, textvariable=edit_var, font=entry_font)
+            entry = ttk.Entry(popupframe, textvariable=edit_var, font=MAIN_FONT)
             entry.bind("<Return>", lambda evt: close_popup(row_idx, edit_var.get()))
             entry.grid(column=0, row=1, sticky="ew")
             entry.focus()
@@ -155,7 +171,7 @@ def start():
         name_var = tk.StringVar(value=f"Activity {i + 1}")
         time_var = tk.IntVar(value=0)
 
-        name_label = ttk.Entry(rowframe, textvariable=name_var, font=entry_font)
+        name_label = ttk.Entry(rowframe, textvariable=name_var, font=MAIN_FONT)
         clear_btn = ttk.Button(rowframe, text="Clear", width=5, command=lambda _i=i: clear_time(_i))
         edit_btn = ttk.Button(rowframe, text="Edit", width=4, command=lambda _i=i: pop_edit_field(_i))
         delete_btn = ttk.Button(rowframe, text="✖", width=2, command=lambda _i=i: remove_activity(_i))
