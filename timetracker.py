@@ -1,15 +1,33 @@
 import tkinter as tk
 from tkinter import ttk
-
 from ttkthemes import ThemedTk
 
+import traceback
 
-WINDOW_TITLE = "Time Tracker"
+
+WINDOW_TITLE = "TimeTracker"
+MAIN_FONT_NAME = 'DejaVu Sans Mono'
+MAIN_FONT_SIZE = 12
+TITLE_FONT = ("purisa", 24)
+MAIN_THEME = 'breeze'
+
+
+main_font = None
+entry_font = None
+
+def init_style():
+    global main_font, entry_font
+    s = ttk.Style()
+    main_font = (MAIN_FONT_NAME, MAIN_FONT_SIZE)
+    s.configure('.', font=main_font)
+    entry_font = main_font
 
 
 def start():
-    root = ThemedTk(theme="breeze")
+    root = ThemedTk(theme=MAIN_THEME)
     root.title(WINDOW_TITLE)
+    init_style()
+
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(0, weight=1)
 
@@ -17,8 +35,12 @@ def start():
     mainframe.grid(column=0, row=0, sticky="nsew")
     mainframe.grid_columnconfigure(0, weight=1)
 
+    titlelabel = ttk.Label(mainframe, text=f"{WINDOW_TITLE}", font=TITLE_FONT,
+                           padding="0 0 0 4", anchor=tk.CENTER)
+    titlelabel.grid(column=0, row=0, sticky="we")
+
     rowframe = ttk.Frame(mainframe)
-    rowframe.grid(column=0, row=0, sticky="nsew")
+    rowframe.grid(column=0, row=1, sticky="nsew")
 
     next_idx = 0
     active_row_var = tk.IntVar()
@@ -61,7 +83,7 @@ def start():
         elif pause_btn is not None:
             pause_btn.invoke()
 
-    popup = None
+    popup: tk.Toplevel = None
 
     def pop_edit_field(row_idx):
         nonlocal popup
@@ -77,11 +99,11 @@ def start():
             popupframe = ttk.Frame(popup, padding="4 4 4 4")
             popupframe.grid(column=0, row=0, sticky="nsew")
 
-            label = ttk.Label(popupframe, text="Add/Subtract Minutes", anchor=tk.CENTER)
+            label = ttk.Label(popupframe, text="Add/Subtract Minutes", font=main_font, anchor=tk.CENTER)
             label.grid(column=0, row=0, sticky="ew")
 
             edit_var = tk.StringVar()
-            entry = ttk.Entry(popupframe, textvariable=edit_var)
+            entry = ttk.Entry(popupframe, textvariable=edit_var, font=entry_font)
             entry.bind("<Return>", lambda evt: close_popup(row_idx, edit_var.get()))
             entry.grid(column=0, row=1, sticky="ew")
             entry.focus()
@@ -96,13 +118,14 @@ def start():
         popup = None
 
         if row_idx in row_data:
-            minutes = 0
+            ms = 0
             try:
-                minutes = int(minute_str)
-            except Exception:
-                pass
+                ms = int(float(minute_str) * 60 * 1000)
+            except (ValueError, OverflowError):
+                traceback.print_exc()
+
             row_time_var = row_data[row_idx].time_var
-            new_time = max(0, row_time_var.get() + minutes * 60 * 1000)
+            new_time = max(0, row_time_var.get() + ms)
             row_time_var.set(new_time)
             update_radio_button_label(row_idx)
 
@@ -127,12 +150,12 @@ def start():
         nonlocal next_idx
         i = (next_idx := next_idx + 1) - 1
 
-        radio_btn = ttk.Radiobutton(rowframe, text=f"0:00:00", variable=active_row_var, value=i)
+        radio_btn = ttk.Radiobutton(rowframe, text=f"0:00:00", padding="2 2 8 2", variable=active_row_var, value=i)
 
         name_var = tk.StringVar(value=f"Activity {i + 1}")
         time_var = tk.IntVar(value=0)
 
-        name_label = ttk.Entry(rowframe, textvariable=name_var)
+        name_label = ttk.Entry(rowframe, textvariable=name_var, font=entry_font)
         clear_btn = ttk.Button(rowframe, text="Clear", width=5, command=lambda _i=i: clear_time(_i))
         edit_btn = ttk.Button(rowframe, text="Edit", width=4, command=lambda _i=i: pop_edit_field(_i))
         delete_btn = ttk.Button(rowframe, text="✖", width=2, command=lambda _i=i: remove_activity(_i))
@@ -156,7 +179,7 @@ def start():
         if i in row_data and i in row_order:
             y = row_order.index(i)
             for x, widget in enumerate(row_data[i].widgets):
-                if isinstance(widget, ttk.Entry):
+                if isinstance(widget, (tk.Entry, ttk.Entry)):
                     widget.grid(column=x, row=y, sticky="ew")
                     rowframe.grid_columnconfigure(x, weight=1)
                 else:
@@ -195,8 +218,7 @@ def start():
                     update_widget_positions(row_order[idx])
 
     def add_global_keybinds(widget):
-
-        def move_active(dy):
+        def change_active_row(dy):
             cur_active = active_row_var.get()
             if len(row_order) == 0 or len(row_data) == 0:
                 new_active = -1
@@ -222,26 +244,23 @@ def start():
                 pause_btn.invoke()
             return "break"
 
-        widget.bind("<Up>", lambda evt: move_active(-1))
-        widget.bind("<Down>", lambda evt: move_active(1))
+        widget.bind("<Up>", lambda evt: change_active_row(-1))
+        widget.bind("<Down>", lambda evt: change_active_row(1))
 
     for _ in range(5):
         add_new_activity()
 
     pause_btn = ttk.Radiobutton(mainframe, text=f"Paused", variable=active_row_var, value=-1)
-    pause_btn.grid(column=0, row=1, sticky="w")
+    pause_btn.grid(column=0, row=2, sticky="w")
     set_active_row(-1)
 
-    mainframe.grid_rowconfigure(2, weight=1)
+    mainframe.grid_rowconfigure(3, weight=1)
 
     control_panel = ttk.Frame(mainframe)
-    control_panel.grid(column=0, row=3, sticky="e")
+    control_panel.grid(column=0, row=4, sticky="e")
 
     add_new_btn = ttk.Button(control_panel, text="Add Activity", command=lambda: add_new_activity())
     add_new_btn.grid(column=0, row=0)
-
-    # remove_act_btn = ttk.Button(control_panel, text="Delete Activity", command=lambda: remove_activity())
-    # remove_act_btn.grid(column=1, row=0)
 
     def time_loop(dt):
         row_idx = active_row_var.get()
