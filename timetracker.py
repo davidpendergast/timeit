@@ -106,12 +106,27 @@ def start():
             row_time_var.set(new_time)
             update_radio_button_label(row_idx)
 
+    #button_start_xy = None
+    dragging_var = tk.IntVar(value=-1)
+
+    def handle_mouse_event(i, evt: tk.Event):
+        if evt.type == tk.EventType.Motion:
+            if i == dragging_var.get():
+                mx, my = (evt.x + evt.widget.winfo_rootx() - rowframe.winfo_rootx(),
+                          evt.y + evt.widget.winfo_rooty() - rowframe.winfo_rooty())
+                for row in range(len(row_order)):
+                    bbx, bby, bbw, bbh = rowframe.grid_bbox(0, row, 100, row)
+                    if bbx < mx < bbx + bbw and bby < my < bby + bbh:
+                        set_row_order_index(i, row)
+                        break
+        elif evt.type == tk.EventType.ButtonPress:
+            dragging_var.set(i)
+        elif evt.type == tk.EventType.ButtonRelease:
+            dragging_var.set(-1)
+
     def add_new_activity():
         nonlocal next_idx
         i = (next_idx := next_idx + 1) - 1
-
-        x = -1
-        y = len(row_order)
 
         radio_btn = ttk.Radiobutton(rowframe, text=f"0:00:00", variable=active_row_var, value=i)
 
@@ -119,13 +134,18 @@ def start():
         time_var = tk.IntVar(value=0)
 
         name_label = ttk.Entry(rowframe, textvariable=name_var)
-        clear_btn = ttk.Button(rowframe, text="Reset", command=lambda _i=i: clear_time(_i))
-        edit_btn = ttk.Button(rowframe, text="Edit", command=lambda _i=i: pop_edit_field(_i))
-        delete_btn = ttk.Button(rowframe, text="Delete", command=lambda _i=i: remove_activity(_i))
+        clear_btn = ttk.Button(rowframe, text="Clear", width=5, command=lambda _i=i: clear_time(_i))
+        edit_btn = ttk.Button(rowframe, text="Edit", width=4, command=lambda _i=i: pop_edit_field(_i))
+        delete_btn = ttk.Button(rowframe, text="✖", width=2, command=lambda _i=i: remove_activity(_i))
+
+        hamburger_btn = ttk.Button(rowframe, text="☰", width=2)
+        hamburger_btn.bind("<Motion>", lambda evt, _i=i: handle_mouse_event(i, evt))
+        hamburger_btn.bind("<ButtonPress>", lambda evt, _i=i: handle_mouse_event(i, evt))
+        hamburger_btn.bind("<ButtonRelease>", lambda evt, _i=i: handle_mouse_event(i, evt))
 
         row_order.append(i)
         row_data[i] = RowData(i, radio_btn, name_var, time_var,
-                              (radio_btn, name_label, clear_btn, edit_btn, delete_btn))
+                              (radio_btn, name_label, clear_btn, edit_btn, hamburger_btn, delete_btn))
 
         update_radio_button_label(i)
         update_widget_positions(i)
@@ -146,6 +166,17 @@ def start():
         elif i in row_data:
             for widget in row_data[i].widgets:
                 widget.grid_remove()
+
+    def set_row_order_index(i, new_idx):
+        if i in row_data and i in row_order:
+            old_idx = row_order.index(i)
+            new_idx = max(0, min(new_idx, len(row_order) - 1))
+            if old_idx != new_idx:
+                row_order.pop(old_idx)
+                row_order.insert(new_idx, i)
+
+                for idx in range(min(old_idx, new_idx), len(row_order)):
+                    update_widget_positions(row_order[idx])
 
     def remove_activity(i):
         if i in row_data:
@@ -191,7 +222,7 @@ def start():
             else:
                 pause_btn.invoke()
             return "break"
-        
+
         widget.bind("<Up>", lambda evt: move_active(-1))
         widget.bind("<Down>", lambda evt: move_active(1))
 
