@@ -39,8 +39,9 @@ def init_style():
 
 def start():
     root = ThemedTk(theme=MAIN_THEME)
+
     root.title(WINDOW_TITLE)
-    root.iconbitmap("icon/favicon.ico")
+    root.iconphoto(False, tk.PhotoImage(file='icon/favicon-32x32.png'))
 
     init_style()
 
