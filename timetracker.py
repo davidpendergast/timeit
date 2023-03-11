@@ -70,24 +70,24 @@ def start():
 
         if row_idx in row_data:
             popup = tk.Toplevel(root)
+            popup.transient(root)
             popup.title(row_data[row_idx].name_var.get())
+            popup.resizable(False, False)
+
             popupframe = ttk.Frame(popup, padding="4 4 4 4")
             popupframe.grid(column=0, row=0, sticky="nsew")
 
+            label = ttk.Label(popupframe, text="Add/Subtract Minutes", anchor=tk.CENTER)
+            label.grid(column=0, row=0, sticky="ew")
+
             edit_var = tk.StringVar()
-
-            # Create an Entry Widget in the Toplevel window
-            label = ttk.Label(popupframe, text="Add/Subtract Minutes: ")
-            label.pack()
-
-            entry = ttk.Entry(popupframe, textvariable=edit_var, width=48)
+            entry = ttk.Entry(popupframe, textvariable=edit_var)
             entry.bind("<Return>", lambda evt: close_popup(row_idx, edit_var.get()))
-            entry.pack()
+            entry.grid(column=0, row=1, sticky="ew")
             entry.focus()
 
-            # Create a Button Widget in the Toplevel Window
-            button = ttk.Button(popupframe, text="Ok", command=lambda: close_popup(row_idx, edit_var.get()))
-            button.pack(pady=5, side=tk.TOP)
+            button = ttk.Button(popupframe, text="Ok", width=4, command=lambda: close_popup(row_idx, edit_var.get()))
+            button.grid(column=0, row=2)
 
     def close_popup(row_idx=-1, minute_str=""):
         nonlocal popup
@@ -106,7 +106,6 @@ def start():
             row_time_var.set(new_time)
             update_radio_button_label(row_idx)
 
-    #button_start_xy = None
     dragging_var = tk.IntVar(value=-1)
 
     def handle_mouse_event(i, evt: tk.Event):
