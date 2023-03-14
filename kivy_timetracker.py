@@ -8,12 +8,16 @@ from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
 from kivy.config import Config
 
+import os
+os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
+
+
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
 Config.set('kivy', 'window_icon', 'icon/favicon-32x32.png')
 
 WINDOW_TITLE = "TimeTracker"
 TITLE_FONT_SIZE = 64
-REGULAR_FONT_SIZE = 24
+REGULAR_FONT_SIZE = 20
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 
 
