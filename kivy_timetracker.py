@@ -1,9 +1,12 @@
-from kivy.app import App
+from kivymd.app import MDApp
+from kivymd.uix.label import MDLabel
+from kivymd.uix.button import MDRectangleFlatButton, MDFlatButton
+
 from kivy.lang import Builder
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.togglebutton import ToggleButton
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.behaviors.toggle_behavior import MDToggleButton
 from kivy.uix.textinput import TextInput
+from kivymd.uix.textfield.textfield import MDTextFieldRect
 
 from kivy.clock import Clock
 from kivy.config import Config
@@ -22,27 +25,53 @@ ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 
 
 Builder.load_string(f"""
-<Label>:
+#:import C kivy.utils.get_color_from_hex
+<MDLabel>:
     font_name: 'DejaVuSansMono'
     font_size: '{REGULAR_FONT_SIZE}sp'
     
 <TextInput>:
     padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
+    background_normal: ''
+    background_active: ''
+    background_disabled_normal: ''
+    background_disabled_down: ''
+    line_anim: False
+    
+    canvas.after:
+        Color:
+            rgba: app.theme_cls.text_color if self.focus else app.theme_cls.disabled_primary_color
+        Line:
+            points: self.pos[0], self.pos[1], self.pos[0] + self.size[0], self.pos[1]
+        Line:
+            points: self.pos[0], self.pos[1] + self.size[1], self.pos[0] + self.size[0], self.pos[1] + self.size[1]
+        Line:
+            points: self.pos[0], self.pos[1], self.pos[0], self.pos[1] + self.size[1]
+        Line:
+            points: self.pos[0] + self.size[0], self.pos[1], self.pos[0] + self.size[0], self.pos[1] + self.size[1]
+    
+    background_color: app.theme_cls.bg_normal
+    foreground_color: app.theme_cls.text_color
+    
+    hint_text_color: app.theme_cls.disabled_hint_text_color
+    cursor_color: app.theme_cls.text_color
     
 <Boxes>:
     id: _parent
     boxes: _boxes 
     orientation: 'vertical'
-    padding: 4
-    spacing: 4
+    padding: 8
     
-    Label:
+    MDLabel:
         text: 'TimeTracker'
         font_size: '{TITLE_FONT_SIZE}sp'
+        theme_text_color: "Custom"
+        text_color: app.theme_cls.primary_color
         size_hint: (1, None)
         height: '{TITLE_FONT_SIZE*2}sp'
+        halign: 'center'  
     
-    ScrollView:
+    MDScrollView:
         effect_cls: 'ScrollEffect'
         do_scroll_x: False
         do_scroll_y: True
@@ -50,19 +79,20 @@ Builder.load_string(f"""
         scroll_type: ['bars']
         bar_width: 4
     
-        BoxLayout: 
+        MDBoxLayout: 
             id: _boxes
             orientation: 'vertical'
         
-    BoxLayout:
+    MDBoxLayout:
         orientation: 'horizontal'
         size_hint: (1, None)
         height: '{ROW_HEIGHT}sp'
         FloatLayout:
             height: '{ROW_HEIGHT}sp'
             size_hint: (1, None)
-        Button:
+        MDRectangleFlatButton:
             text: 'Add Activity'
+            font_size: '{REGULAR_FONT_SIZE}sp'
             size: ('{ROW_HEIGHT * 4}sp', '{ROW_HEIGHT}sp')
             size_hint: (None, None)
             on_press: _parent.add_row()
@@ -94,13 +124,24 @@ class RowData:
         self.timer_btn.text = self.get_time_str()
 
 
-class Boxes(BoxLayout):
+class MyToggleButton(MDRectangleFlatButton, MDToggleButton):
+    def __init__(self, *args, **kwargs):
+        self.background_normal = [255, 255, 255]
+        super().__init__(*args, **kwargs)
+        self.background_normal = self.theme_cls.bg_normal
+        self.background_down = self.theme_cls.primary_color
+        self.font_color_down = self.theme_cls.bg_dark
+        self.font_size = f'{REGULAR_FONT_SIZE}sp'
+
+
+class Boxes(MDBoxLayout):
 
     def __init__(self, parent, **kwargs):
         super(Boxes, self).__init__(**kwargs)
 
         self._parent = parent
         self.boxes.size_hint = (1, None)
+        self.boxes.spacing = '4sp'
 
         self.activity_id_counter = 0
 
@@ -109,7 +150,7 @@ class Boxes(BoxLayout):
         for _ in range(5):
             self.add_row()
 
-        self.timer = Clock.schedule_interval(self.inc_time, 1)
+        self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
     def inc_time(self, dt):
         if self.active_row_id in self.row_lookup:
@@ -121,11 +162,16 @@ class Boxes(BoxLayout):
 
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
 
+    def _update_boxes_height(self):
+        # seems like it shouldn't be needed
+        n = len(self.boxes.children)
+        self.boxes.height = f"{(ROW_HEIGHT + int(str(self.boxes.spacing)[:-2])) * n}sp"
+
     def remove_row(self, i):
         if i in self.row_lookup:
             row_widget = self.row_lookup[i].row_widget
             self.boxes.remove_widget(row_widget)
-            self.boxes.height = f"{ROW_HEIGHT * len(self.boxes.children)}sp"  # seems like it shouldn't be needed
+            self._update_boxes_height()
             del self.row_lookup[i]
 
             if self.active_row_id == i:
@@ -144,9 +190,10 @@ class Boxes(BoxLayout):
         self.activity_id_counter += 1
 
         row_height = f'{ROW_HEIGHT}sp'
-        row = BoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
+        row = MDBoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
+        row.spacing = self.boxes.spacing
 
-        checkbox = ToggleButton(size=(f'{ROW_HEIGHT * 3}sp', row_height), size_hint=(None, None))
+        checkbox = MyToggleButton(size=(f'{ROW_HEIGHT * 3}sp', row_height), size_hint=(None, None))
         checkbox.group = "gay"
         checkbox.text = "0:00:00"
 
@@ -160,12 +207,14 @@ class Boxes(BoxLayout):
 
         row.add_widget(checkbox)
 
-        textinput = TextInput(text=f'Activity {i+1}',
-                              font_name="DejaVuSansMono",
-                              font_size=f"{REGULAR_FONT_SIZE}sp",
-                              height=row_height,
-                              size_hint=(1, None),
-                              multiline=False)
+        textinput = TextInput(
+            text=f"",
+            hint_text=f"Activity {i+1}",
+            font_name='DejaVuSansMono',
+            font_size=f'{REGULAR_FONT_SIZE}sp',
+            height=row_height,
+            size_hint=(1, None),
+            multiline=False)
 
         def on_triple_tap():
             Clock.schedule_once(lambda dt: textinput.select_all())
@@ -173,37 +222,44 @@ class Boxes(BoxLayout):
         textinput.on_triple_tap = on_triple_tap
         row.add_widget(textinput)
 
-        clear_btn = Button(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        clear_btn = MDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         clear_btn.text = "Clear"
+        clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         clear_btn.on_release = lambda: self.clear_row_time(i)
         row.add_widget(clear_btn)
 
-        edit_btn = Button(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        edit_btn = MDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
+        edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(edit_btn)
 
-        drag_btn = Button(size=(row_height, row_height), size_hint=(None, None))
+        drag_btn = MDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "="
+        drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(drag_btn)
 
-        remove_btn = Button(size=(row_height, row_height), size_hint=(None, None))
+        remove_btn = MDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
         remove_btn.text = "✖"
+        remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(remove_btn)
         remove_btn.on_release = lambda: self.remove_row(i)
 
         self.boxes.add_widget(row)
-        self.boxes.height = f"{ROW_HEIGHT * len(self.boxes.children)}sp"  # seems like it shouldn't be needed
+        self._update_boxes_height()
 
         row_data = RowData(row, checkbox, textinput)
         self.row_lookup[i] = row_data
 
 
-class TimeTrackerApp(App):
+class TimeTrackerApp(MDApp):
 
     def __init__(self):
         super().__init__()
 
     def build(self):
+        self.theme_cls.theme_style = "Dark"
+        self.theme_cls.primary_palette = "Cyan"
+        self.theme_cls.primary_hue = "200"
         return Boxes(self)
 
 
