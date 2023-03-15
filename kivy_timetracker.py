@@ -1,12 +1,12 @@
 from kivymd.app import MDApp
-from kivymd.uix.label import MDLabel
-from kivymd.uix.button import MDRectangleFlatButton, MDFlatButton
-
 from kivy.lang import Builder
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.behaviors.toggle_behavior import MDToggleButton
+
 from kivy.uix.textinput import TextInput
-from kivymd.uix.textfield.textfield import MDTextFieldRect
+
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.button import MDRectangleFlatButton
+from kivymd.uix.behaviors.toggle_behavior import MDToggleButton
+from kivymd.uix.behaviors import HoverBehavior
 
 from kivy.clock import Clock
 from kivy.config import Config
@@ -14,18 +14,18 @@ from kivy.config import Config
 import os
 os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
 
-
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
-Config.set('kivy', 'window_icon', 'icon/favicon-32x32.png')
+Config.set('kivy', 'window_icon', 'icon/favicon-32x32.png') # TODO Replace
 
-WINDOW_TITLE = "TimeTracker"
+
+WINDOW_TITLE = "TimeIt"
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
+ZERO_TIME = "0:00:00"
 
 
 Builder.load_string(f"""
-#:import C kivy.utils.get_color_from_hex
 <MDLabel>:
     font_name: 'DejaVuSansMono'
     font_size: '{REGULAR_FONT_SIZE}sp'
@@ -55,21 +55,24 @@ Builder.load_string(f"""
     
     hint_text_color: app.theme_cls.disabled_hint_text_color
     cursor_color: app.theme_cls.text_color
-    
+
+<MyToggleButton>:
+    font_size: '{TITLE_FONT_SIZE}sp'
+    text_color: app.theme_cls.bg_normal if (self.state == 'down') else \
+            (app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color)
+    font_color_normal: app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color
+    font_color_down: app.theme_cls.bg_normal
+
 <Boxes>:
     id: _parent
     boxes: _boxes 
     orientation: 'vertical'
     padding: 8
-    
-    MDLabel:
-        text: 'TimeTracker'
-        font_size: '{TITLE_FONT_SIZE}sp'
-        theme_text_color: "Custom"
-        text_color: app.theme_cls.primary_color
+        
+    Image:
+        source: 'logo.png'
         size_hint: (1, None)
-        height: '{TITLE_FONT_SIZE*2}sp'
-        halign: 'center'  
+        size: (self.texture_size[0], self.texture_size[1] * 1.25)
     
     MDScrollView:
         effect_cls: 'ScrollEffect'
@@ -90,7 +93,7 @@ Builder.load_string(f"""
         FloatLayout:
             height: '{ROW_HEIGHT}sp'
             size_hint: (1, None)
-        MDRectangleFlatButton:
+        MyMDRectangleFlatButton:
             text: 'Add Activity'
             font_size: '{REGULAR_FONT_SIZE}sp'
             size: ('{ROW_HEIGHT * 4}sp', '{ROW_HEIGHT}sp')
@@ -124,13 +127,21 @@ class RowData:
         self.timer_btn.text = self.get_time_str()
 
 
-class MyToggleButton(MDRectangleFlatButton, MDToggleButton):
+class MyMDRectangleFlatButton(MDRectangleFlatButton, HoverBehavior):
+
+    def on_enter(self, *args):
+        self.line_color = self.theme_cls.text_color
+
+    def on_leave(self, *args):
+        self.line_color = self.theme_cls.primary_color
+
+
+class MyToggleButton(MyMDRectangleFlatButton, MDToggleButton):
     def __init__(self, *args, **kwargs):
-        self.background_normal = [255, 255, 255]
+        self.background_normal = [255, 255, 255]  # bug?~
         super().__init__(*args, **kwargs)
         self.background_normal = self.theme_cls.bg_normal
         self.background_down = self.theme_cls.primary_color
-        self.font_color_down = self.theme_cls.bg_dark
         self.font_size = f'{REGULAR_FONT_SIZE}sp'
 
 
@@ -163,7 +174,6 @@ class Boxes(MDBoxLayout):
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
 
     def _update_boxes_height(self):
-        # seems like it shouldn't be needed
         n = len(self.boxes.children)
         self.boxes.height = f"{(ROW_HEIGHT + int(str(self.boxes.spacing)[:-2])) * n}sp"
 
@@ -195,11 +205,10 @@ class Boxes(MDBoxLayout):
 
         checkbox = MyToggleButton(size=(f'{ROW_HEIGHT * 3}sp', row_height), size_hint=(None, None))
         checkbox.group = "gay"
-        checkbox.text = "0:00:00"
+        checkbox.text = ZERO_TIME
 
         def on_checkbox_active(btn):
             if btn.state == "down":
-                print(f"Activity {i+1} became active")
                 self.active_row_id = i
             else:
                 self.active_row_id = -1
@@ -222,23 +231,23 @@ class Boxes(MDBoxLayout):
         textinput.on_triple_tap = on_triple_tap
         row.add_widget(textinput)
 
-        clear_btn = MDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        clear_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         clear_btn.text = "Clear"
         clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         clear_btn.on_release = lambda: self.clear_row_time(i)
         row.add_widget(clear_btn)
 
-        edit_btn = MDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        edit_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(edit_btn)
 
-        drag_btn = MDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
+        drag_btn = MyMDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "="
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(drag_btn)
 
-        remove_btn = MDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
+        remove_btn = MyMDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
         remove_btn.text = "✖"
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(remove_btn)
@@ -260,6 +269,7 @@ class TimeTrackerApp(MDApp):
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Cyan"
         self.theme_cls.primary_hue = "200"
+        self.title = WINDOW_TITLE
         return Boxes(self)
 
 
