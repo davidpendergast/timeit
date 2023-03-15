@@ -62,6 +62,7 @@ Builder.load_string(f"""
     cursor_color: app.theme_cls.text_color
 
 <MyToggleButton>:
+    ripple_scale: 0
     font_size: '{REGULAR_FONT_SIZE}sp'
     text_color: app.theme_cls.bg_normal if (self.state == 'down') else \
             (app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color)
@@ -146,12 +147,11 @@ class MyMDRectangleFlatButton(MDRectangleFlatButton, HoverBehavior):
 
 class MyToggleButton(MyMDRectangleFlatButton, MDToggleButton):
 
-    def __init__(self, *args, **kwargs):
-        self.background_normal = [255, 255, 255]  # bug?~
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        self.background_normal = [1, 1, 1, 1]  # bug?~
+        super().__init__(**kwargs)
         self.background_normal = self.theme_cls.bg_normal
         self.background_down = self.theme_cls.primary_color
-        self.font_size = f'{REGULAR_FONT_SIZE}sp'
 
 
 class Boxes(MDBoxLayout):
@@ -234,18 +234,17 @@ class Boxes(MDBoxLayout):
         row = MDBoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
         row.spacing = self.boxes.spacing
 
-        checkbox = MyToggleButton(size=(f'{ROW_HEIGHT * 3}sp', row_height), size_hint=(None, None))
-        checkbox.group = "gay"
-        checkbox.text = ZERO_TIME
+        timer_toggle_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
+        timer_toggle_btn.group = "gay"
+        timer_toggle_btn.text = ZERO_TIME
 
         def on_checkbox_active(btn):
             if btn.state == "down":
                 self.active_row_id = i
             else:
                 self.active_row_id = -1
-        checkbox.bind(on_press=on_checkbox_active)
-
-        row.add_widget(checkbox)
+        timer_toggle_btn.bind(on_press=on_checkbox_active)
+        row.add_widget(timer_toggle_btn)
 
         textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
 
@@ -337,7 +336,7 @@ class Boxes(MDBoxLayout):
         self.boxes.add_widget(row)
         self._update_boxes_height()
 
-        row_data = RowData(row, checkbox, textinput)
+        row_data = RowData(row, timer_toggle_btn, textinput)
         self.row_lookup[i] = row_data
 
 
