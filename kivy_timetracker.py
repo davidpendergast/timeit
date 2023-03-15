@@ -1,7 +1,11 @@
+import traceback
+
 from kivymd.app import MDApp
 from kivy.lang import Builder
 
 from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
+from kivy.uix.widget import Widget
 
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDRectangleFlatButton
@@ -20,6 +24,7 @@ Config.set('kivy', 'window_icon', 'icon/favicon-32x32.png') # TODO Replace
 
 WINDOW_TITLE = "TimeIt"
 TITLE_FONT_SIZE = 64
+REGULAR_FONT = 'DejaVuSansMono'
 REGULAR_FONT_SIZE = 20
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 ZERO_TIME = "0:00:00"
@@ -27,7 +32,7 @@ ZERO_TIME = "0:00:00"
 
 Builder.load_string(f"""
 <MDLabel>:
-    font_name: 'DejaVuSansMono'
+    font_name: '{REGULAR_FONT}'
     font_size: '{REGULAR_FONT_SIZE}sp'
     
 <TextInput>:
@@ -57,7 +62,7 @@ Builder.load_string(f"""
     cursor_color: app.theme_cls.text_color
 
 <MyToggleButton>:
-    font_size: '{TITLE_FONT_SIZE}sp'
+    font_size: '{REGULAR_FONT_SIZE}sp'
     text_color: app.theme_cls.bg_normal if (self.state == 'down') else \
             (app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color)
     font_color_normal: app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color
@@ -117,6 +122,9 @@ class RowData:
         self.elapsed_time = millis
         self.update_button_label()
 
+    def get_time_ms(self):
+        return self.elapsed_time
+
     def get_time_str(self):
         secs = self.elapsed_time // 1000
         mins = secs // 60
@@ -137,6 +145,7 @@ class MyMDRectangleFlatButton(MDRectangleFlatButton, HoverBehavior):
 
 
 class MyToggleButton(MyMDRectangleFlatButton, MDToggleButton):
+
     def __init__(self, *args, **kwargs):
         self.background_normal = [255, 255, 255]  # bug?~
         super().__init__(*args, **kwargs)
@@ -167,11 +176,23 @@ class Boxes(MDBoxLayout):
         if self.active_row_id in self.row_lookup:
             row_data = self.row_lookup[self.active_row_id]
             row_data.add_time_ms(int(dt * 1000))
+        self._update_window_caption()
+
+    def _update_window_caption(self):
+        if self.active_row_id in self.row_lookup:
+            row_data = self.row_lookup[self.active_row_id]
             caption_msg = f"{row_data.textbox.text} ~ {row_data.get_time_str()}"
         else:
             caption_msg = "Paused"
-
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
+
+    def get_row_data(self, row_i=None) -> RowData:
+        if row_i is None:
+            row_i = self.active_row_id
+        if row_i in self.row_lookup:
+            return self.row_lookup[row_i]
+        else:
+            return None
 
     def _update_boxes_height(self):
         n = len(self.boxes.children)
@@ -195,6 +216,16 @@ class Boxes(MDBoxLayout):
                 self.row_lookup[i].timer_btn.state = "normal"
                 self.active_row_id = -1
 
+    def _make_text_input(self, hint_text="") -> TextInput:
+        return TextInput(
+            text=f"",
+            hint_text=hint_text,
+            font_name=REGULAR_FONT,
+            font_size=f'{REGULAR_FONT_SIZE}sp',
+            height=f'{ROW_HEIGHT}sp',
+            size_hint=(1, None),
+            multiline=False)
+
     def add_row(self):
         i = self.activity_id_counter
         self.activity_id_counter += 1
@@ -216,14 +247,7 @@ class Boxes(MDBoxLayout):
 
         row.add_widget(checkbox)
 
-        textinput = TextInput(
-            text=f"",
-            hint_text=f"Activity {i+1}",
-            font_name='DejaVuSansMono',
-            font_size=f'{REGULAR_FONT_SIZE}sp',
-            height=row_height,
-            size_hint=(1, None),
-            multiline=False)
+        textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
 
         def on_triple_tap():
             Clock.schedule_once(lambda dt: textinput.select_all())
@@ -237,9 +261,66 @@ class Boxes(MDBoxLayout):
         clear_btn.on_release = lambda: self.clear_row_time(i)
         row.add_widget(clear_btn)
 
+        def create_popup(_):
+            edit_field = self._make_text_input('+/- Minutes')
+            ok_btn = MyMDRectangleFlatButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
+            cancel_btn = MyMDRectangleFlatButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
+
+            content = MDBoxLayout(orientation='vertical')
+            content.spacing = 4
+
+            content.add_widget(Widget())
+            content.add_widget(edit_field)
+            content.add_widget(Widget())
+
+            btn_row = MDBoxLayout(orientation='horizontal')
+            btn_row.size_hint = (1, None)
+            btn_row.height = f'{ROW_HEIGHT}sp'
+            btn_row.add_widget(Widget())
+            btn_row.add_widget(ok_btn)
+            btn_row.add_widget(cancel_btn)
+            btn_row.add_widget(Widget())
+            btn_row.spacing = 4
+            content.add_widget(btn_row)
+
+            popup = Popup(content=content, auto_dismiss=True)
+
+            popup.title = f"Edit {textinput.text or 'Untitled Activity'}"
+            popup.title_align = 'center'
+            popup.title_font = REGULAR_FONT
+            popup.title_size = REGULAR_FONT_SIZE
+
+            popup.separator_color = self._parent.theme_cls.primary_color
+
+            popup.size_hint = (None, None)
+            popup.size = ('400sp', '168sp')
+
+            def try_to_edit_time(_):
+                cur_text = edit_field.text
+                try:
+                    ms_to_add = int(1000 * 60 * float(cur_text))
+                    _row_data = self.get_row_data(i)
+                    if _row_data is not None:
+                        _row_data.set_time_ms(max(0, _row_data.get_time_ms() + ms_to_add))
+                except Exception:
+                    traceback.print_exc()
+                finally:
+                    popup.dismiss()
+
+            # bind the on_press event of the button to the dismiss function
+            ok_btn.bind(on_press=try_to_edit_time)
+            cancel_btn.bind(on_press=popup.dismiss)
+
+            edit_field.bind(on_text_validate=try_to_edit_time)
+            edit_field.focus = True
+
+            # open the popup
+            popup.open()
+
         edit_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
+        edit_btn.bind(on_release=create_popup)
         row.add_widget(edit_btn)
 
         drag_btn = MyMDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
