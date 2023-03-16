@@ -21,7 +21,6 @@ import os
 os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
-Config.set('kivy', 'window_icon', 'icon/icon64.png')
 
 REGULAR_FONT = 'DejaVuSansMono'
 LabelBase.register(name=REGULAR_FONT,
@@ -80,6 +79,7 @@ Builder.load_string(f"""
 <Boxes>:
     id: _parent
     boxes: _boxes 
+    pause_btn: _pause_btn
     orientation: 'vertical'
     padding: 8
         
@@ -104,16 +104,16 @@ Builder.load_string(f"""
         orientation: 'horizontal'
         size_hint: (1, None)
         height: '{ROW_HEIGHT}sp'
+        MyToggleButton:
+            id: _pause_btn
+            font_size: '{REGULAR_FONT_SIZE}sp'
         FloatLayout:
-            height: '{ROW_HEIGHT}sp'
-            size_hint: (1, None)
         MyMDRectangleFlatButton:
             text: 'Add Activity'
             font_size: '{REGULAR_FONT_SIZE}sp'
-            size: ('{ROW_HEIGHT * 4}sp', '{ROW_HEIGHT}sp')
-            size_hint: (None, None)
             on_press: _parent.add_row()
 """)
+
 
 class RowData:
 
@@ -166,8 +166,8 @@ class Boxes(MDBoxLayout):
 
     def __init__(self, parent, **kwargs):
         super(Boxes, self).__init__(**kwargs)
-
         self._parent = parent
+        self._btn_group = 'group0'
         self.boxes.size_hint = (1, None)
         self.boxes.spacing = '4sp'
 
@@ -180,6 +180,8 @@ class Boxes(MDBoxLayout):
         self.row_ordering = []
         for _ in range(5):
             self.add_row()
+
+        self._build_pause_btn()
 
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
@@ -219,6 +221,7 @@ class Boxes(MDBoxLayout):
 
             if self.active_row_id == i:
                 self.active_row_id = -1
+                self.set_pause_btn_enabled(False)
 
     def clear_row_time(self, i):
         if i in self.row_lookup:
@@ -227,6 +230,7 @@ class Boxes(MDBoxLayout):
             if i == self.active_row_id:
                 self.row_lookup[i].timer_btn.state = "normal"
                 self.active_row_id = -1
+                self.set_pause_btn_enabled(False)
 
     def _make_text_input(self, hint_text="") -> TextInput:
         return TextInput(
@@ -265,14 +269,16 @@ class Boxes(MDBoxLayout):
         row.spacing = self.boxes.spacing
 
         timer_toggle_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
-        timer_toggle_btn.group = "gey"
+        timer_toggle_btn.group = self._btn_group
         timer_toggle_btn.text = ZERO_TIME
 
         def on_checkbox_active(btn):
             if btn.state == "down":
                 self.active_row_id = i
+                self.set_pause_btn_enabled(True)
             else:
                 self.active_row_id = -1
+                self.set_pause_btn_enabled(False)
         timer_toggle_btn.bind(on_press=on_checkbox_active)
         row.add_widget(timer_toggle_btn)
 
@@ -397,6 +403,30 @@ class Boxes(MDBoxLayout):
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
 
+    def set_pause_btn_enabled(self, val):
+        self.pause_btn.disabled = not val
+
+    def _build_pause_btn(self):
+        self.pause_btn.text = " Pause "
+        self.pause_btn.group = self._btn_group
+
+        active_row_id_before_pause = [-1]
+
+        def on_checkbox_active(btn):
+            if btn.state == "down":
+                active_row_id_before_pause[0] = self.active_row_id
+                btn.text = "Unpause"
+                self.active_row_id = -1
+            else:
+                if active_row_id_before_pause[0] in self.row_lookup:
+                    self.active_row_id = active_row_id_before_pause[0]
+                    self.row_lookup[active_row_id_before_pause[0]].timer_btn.state = "down"
+                btn.text = " Pause "
+                active_row_id_before_pause[0] = -1
+
+        self.pause_btn.bind(on_press=on_checkbox_active)
+        self.set_pause_btn_enabled(False)
+
 
 class TimeTrackerApp(MDApp):
 
@@ -408,6 +438,7 @@ class TimeTrackerApp(MDApp):
         self.theme_cls.primary_palette = "Cyan"
         self.theme_cls.primary_hue = "200"
         self.title = WINDOW_TITLE
+        self.icon = 'icon/icon64.png'
         return Boxes(self)
 
 
