@@ -1,4 +1,5 @@
 import traceback
+import typing
 
 from kivymd.app import MDApp
 from kivy.lang import Builder
@@ -23,15 +24,14 @@ Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
 Config.set('kivy', 'window_icon', 'icon/icon64.png')
 
 REGULAR_FONT = 'DejaVuSansMono'
-
 LabelBase.register(name=REGULAR_FONT,
                    fn_regular='fonts/dejavu-sans-mono/DejaVuSansMono.ttf',
                    fn_italic='fonts/dejavu-sans-mono/DejaVuSansMono-Oblique.ttf',
                    fn_bold='fonts/dejavu-sans-mono/DejaVuSansMono-Bold.ttf',
                    fn_bolditalic='fonts/dejavu-sans-mono/DejaVuSansMono-BoldOblique.ttf',)
 
-
 WINDOW_TITLE = "TimeIt"
+
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
@@ -173,8 +173,11 @@ class Boxes(MDBoxLayout):
 
         self.activity_id_counter = 0
 
+        self._cached_cursor_col = -1
+
         self.active_row_id = -1
-        self.row_lookup = {}
+        self.row_lookup: typing.Dict[int, RowData] = {}
+        self.row_ordering = []
         for _ in range(5):
             self.add_row()
 
@@ -212,6 +215,7 @@ class Boxes(MDBoxLayout):
             self.boxes.remove_widget(row_widget)
             self._update_boxes_height()
             del self.row_lookup[i]
+            self.row_ordering.remove(i)
 
             if self.active_row_id == i:
                 self.active_row_id = -1
@@ -232,7 +236,25 @@ class Boxes(MDBoxLayout):
             font_size=f'{REGULAR_FONT_SIZE}sp',
             height=f'{ROW_HEIGHT}sp',
             size_hint=(1, None),
-            multiline=False)
+            multiline=False,
+            write_tab=False)
+
+    def select_text_field(self, i, cursor_col=0):
+        if i in self.row_lookup:
+            row_to_focus = self.row_lookup[i]
+            row_to_focus.textbox.focus = True
+            row_to_focus.textbox.cursor = (cursor_col, 0)
+
+    def move_focused_text_field(self, cur_i, dy, cursor_col=0):
+        if cur_i in self.row_lookup and len(self.row_lookup) > 1:
+            order_idx = self.row_ordering.index(cur_i)
+            next_i = self.row_ordering[(order_idx + dy) % len(self.row_ordering)]
+            self.select_text_field(next_i, cursor_col=cursor_col)
+
+    def _cache_cursor_pos(self, i):
+        if i in self.row_lookup:
+            row = self.row_lookup[i]
+            self._cached_cursor_col = row.textbox.cursor_col
 
     def add_row(self):
         i = self.activity_id_counter
@@ -243,7 +265,7 @@ class Boxes(MDBoxLayout):
         row.spacing = self.boxes.spacing
 
         timer_toggle_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
-        timer_toggle_btn.group = "gay"
+        timer_toggle_btn.group = "gey"
         timer_toggle_btn.text = ZERO_TIME
 
         def on_checkbox_active(btn):
@@ -256,10 +278,37 @@ class Boxes(MDBoxLayout):
 
         textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
 
-        def on_triple_tap():
-            Clock.schedule_once(lambda dt: textinput.select_all())
+        def on_triple_tap(txt_fld):
+            Clock.schedule_once(lambda dt: txt_fld.select_all())
             return True
-        textinput.on_triple_tap = on_triple_tap
+        textinput.bind(on_triple_tap=on_triple_tap)
+
+        old_kb_on_key_down = textinput.keyboard_on_key_down
+
+        def kb_on_key_down(window, keycode, text, modifiers):
+            if keycode is not None and keycode[1] in ('up', 'down'):
+                cursor_col = textinput.cursor_col
+                self.move_focused_text_field(i, (1 if keycode[1] == 'down' else -1), max(cursor_col, self._cached_cursor_col))
+                return True
+            elif keycode is not None and keycode[1] in ('left', 'right', 'home', 'end', 'pageup', 'pagedown'):
+                Clock.schedule_once(lambda dt: self._cache_cursor_pos(i))
+            return old_kb_on_key_down(window, keycode, text, modifiers)
+
+        textinput.keyboard_on_key_down = kb_on_key_down
+
+        def store_cursor_pos_later(*_):
+            Clock.schedule_once(lambda dt: self._cache_cursor_pos(i))
+        textinput.bind(text=store_cursor_pos_later)
+
+        def store_cursor_col_later_wrapper(func):
+            def wrapper(*args, **kwargs):
+                Clock.schedule_once(lambda dt: self._cache_cursor_pos(i))
+                func(*args, **kwargs)
+            return wrapper
+
+        textinput.on_touch_down = store_cursor_col_later_wrapper(textinput.on_touch_down)
+        textinput.on_touch_up = store_cursor_col_later_wrapper(textinput.on_touch_up)
+
         row.add_widget(textinput)
 
         clear_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
@@ -346,6 +395,7 @@ class Boxes(MDBoxLayout):
 
         row_data = RowData(row, timer_toggle_btn, textinput)
         self.row_lookup[i] = row_data
+        self.row_ordering.append(i)
 
 
 class TimeTrackerApp(MDApp):
