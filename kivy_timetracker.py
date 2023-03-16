@@ -14,17 +14,25 @@ from kivymd.uix.behaviors import HoverBehavior
 
 from kivy.clock import Clock
 from kivy.config import Config
+from kivy.core.text import LabelBase
 
 import os
 os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
-Config.set('kivy', 'window_icon', 'icon/favicon-32x32.png') # TODO Replace
+Config.set('kivy', 'window_icon', 'icon/icon64.png')
+
+REGULAR_FONT = 'DejaVuSansMono'
+
+LabelBase.register(name=REGULAR_FONT,
+                   fn_regular='fonts/dejavu-sans-mono/DejaVuSansMono.ttf',
+                   fn_italic='fonts/dejavu-sans-mono/DejaVuSansMono-Oblique.ttf',
+                   fn_bold='fonts/dejavu-sans-mono/DejaVuSansMono-Bold.ttf',
+                   fn_bolditalic='fonts/dejavu-sans-mono/DejaVuSansMono-BoldOblique.ttf',)
 
 
 WINDOW_TITLE = "TimeIt"
 TITLE_FONT_SIZE = 64
-REGULAR_FONT = 'DejaVuSansMono'
 REGULAR_FONT_SIZE = 20
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 ZERO_TIME = "0:00:00"
