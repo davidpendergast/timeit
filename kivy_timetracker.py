@@ -33,6 +33,7 @@ LabelBase.register(name=REGULAR_FONT,
 WINDOW_TITLE = "TimeIt"
 
 FG_COLOR = tuple(x/255. for x in (128, 222, 234))
+FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
 SECONDARY_COLOR = tuple(x/255. for x in (240, 240, 240))
 BG_COLOR = tuple(x/255. for x in (0, 0, 0))
 DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
@@ -75,8 +76,6 @@ Builder.load_string(f"""
     font_size: '{REGULAR_FONT_SIZE}sp'
     
 <MyToggleButton>:
-    background_color: {BG_COLOR}
-    color: {FG_COLOR} if self.state == 'down' else {SECONDARY_COLOR}
     canvas.after:
         Color:
             rgba: self.line_color
@@ -158,6 +157,7 @@ class RowData:
 
     def update_button_label(self):
         self.timer_btn.text = self.get_time_str()
+        self.timer_btn.update_colors()
 
 
 class LineBorderWidget(Widget):
@@ -188,20 +188,47 @@ class MyTextInput(TextInput, LineBorderWidget):
 class MyToggleButton(ToggleButton, HoverBehavior):
 
     line_color = ColorProperty(DISABLED_FG_COLOR)
-    pressed_color = ColorProperty(FG_COLOR)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.background_normal = 'button_texture.png'
         self.background_active = 'button_texture.png'
+        self.background_down = 'button_texture.png'
         self.background_disabled_normal = 'button_texture.png'
         self.background_disabled_down = 'button_texture.png'
 
+        self.update_colors()
+
     def on_enter(self, *args):
-        self.line_color = FG_COLOR
+        self.update_colors()
 
     def on_leave(self, *args):
-        self.line_color = DISABLED_FG_COLOR
+        self.update_colors()
+
+    def calc_text_color(self):
+        if self.disabled:
+            return DISABLED_FG_COLOR
+        elif self.state == "down":
+            return BG_COLOR
+        else:
+            return SECONDARY_COLOR
+
+    def calc_fill_color(self):
+        if self.disabled or self.state != "down":
+            return BG_COLOR
+        else:
+            return FG_COLOR
+
+    def calc_line_color(self):
+        if self.hovering and not self.disabled:
+            return FG_COLOR
+        else:
+            return DISABLED_FG_COLOR
+
+    def update_colors(self):
+        self.line_color = self.calc_line_color()
+        self.color = self.calc_text_color()
+        self.background_color = self.calc_fill_color()
 
 
 class Boxes(BoxLayout):
@@ -214,6 +241,7 @@ class Boxes(BoxLayout):
         self.boxes.spacing = f'{SPACING}sp'
 
         self.activity_id_counter = 0
+        self.active_row_id_before_pause = [-1]
 
         self._cached_cursor_col = -1
 
@@ -262,8 +290,9 @@ class Boxes(BoxLayout):
             self.row_ordering.remove(i)
 
             if self.active_row_id == i:
+                self.update_row_colors(self.active_row_id)
                 self.active_row_id = -1
-                self.set_pause_btn_enabled(False)
+                self._update_pause_btn(mode='pause', disabled=True)
 
     def clear_row_time(self, i):
         if i in self.row_lookup:
@@ -271,8 +300,13 @@ class Boxes(BoxLayout):
 
             if i == self.active_row_id:
                 self.row_lookup[i].timer_btn.state = "normal"
+                self.row_lookup[i].timer_btn.update_colors()
                 self.active_row_id = -1
-                self.set_pause_btn_enabled(False)
+                self._update_pause_btn(mode='pause', disabled=True)
+
+    def update_row_colors(self, i):
+        if i in self.row_lookup:
+            self.row_lookup[i].timer_btn.update_colors()
 
     def _make_text_input(self, hint_text="") -> TextInput:
         text_fld = MyTextInput(
@@ -286,7 +320,6 @@ class Boxes(BoxLayout):
             write_tab=False)
 
         def on_focus(instance, value):
-            print(f"FOCUSED?! = {value}")
             if value:
                 instance.line_color = SECONDARY_COLOR
             else:
@@ -325,16 +358,38 @@ class Boxes(BoxLayout):
         timer_toggle_btn.text = ZERO_TIME
 
         def on_checkbox_active(btn):
+            self.active_row_id_before_pause[0] = -1
             if btn.state == "down":
+                self.update_row_colors(self.active_row_id)  # update old row
                 self.active_row_id = i
                 self._update_pause_btn(mode='pause', disabled=False)
-                btn.background_color = (1, 0, 0)
             else:
                 self.active_row_id = -1
-                self.set_pause_btn_enabled(False)
                 self._update_pause_btn(mode='pause', disabled=True)
-                btn.background_color = BG_COLOR
+            btn.update_colors()
+
         timer_toggle_btn.bind(on_press=on_checkbox_active)
+
+        def calc_timer_text_color():
+            if timer_toggle_btn.disabled or timer_toggle_btn.state == "down":
+                return BG_COLOR
+            elif timer_toggle_btn.text in ('', ZERO_TIME):
+                return DISABLED_FG_COLOR
+            else:
+                return FG_COLOR
+        timer_toggle_btn.calc_text_color = calc_timer_text_color
+
+        def calc_timer_bg_color():
+            if timer_toggle_btn.state == "down":
+                return FG_COLOR if not timer_toggle_btn.disabled else FG_COLOR_DIM
+            elif self.active_row_id_before_pause[0] == i:
+                return FG_COLOR_DIM
+            else:
+                return BG_COLOR
+        timer_toggle_btn.calc_fill_color = calc_timer_bg_color
+
+        timer_toggle_btn.update_colors()
+
         row.add_widget(timer_toggle_btn)
 
         textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
@@ -458,33 +513,32 @@ class Boxes(BoxLayout):
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
 
-    def set_pause_btn_enabled(self, val):
-        self.pause_btn.disabled = not val
-
     def _update_pause_btn(self, mode='pause', disabled=False):
         self.pause_btn.disabled = disabled
         self.pause_btn.text = "Pause" if mode == 'pause' else "Resume"
+        self.pause_btn.update_colors()
 
     def _build_pause_btn(self):
         self.pause_btn.text = "Pause"
         self.pause_btn.group = self._btn_group
 
-        active_row_id_before_pause = [-1]
-
         def on_checkbox_active(btn):
             if btn.state == "down":
-                active_row_id_before_pause[0] = self.active_row_id
+                self.active_row_id_before_pause[0] = self.active_row_id
+                self.update_row_colors(self.active_row_id_before_pause[0])
                 btn.text = "Resume"
                 self.active_row_id = -1
             else:
-                if active_row_id_before_pause[0] in self.row_lookup:
-                    self.active_row_id = active_row_id_before_pause[0]
-                    self.row_lookup[active_row_id_before_pause[0]].timer_btn.state = "down"
+                if self.active_row_id_before_pause[0] in self.row_lookup:
+                    self.active_row_id = self.active_row_id_before_pause[0]
+                    self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.state = "down"
+                    self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.update_colors()
                 btn.text = "Pause"
-                active_row_id_before_pause[0] = -1
+                self.active_row_id_before_pause[0] = -1
+            btn.update_colors()
 
         self.pause_btn.bind(on_press=on_checkbox_active)
-        self.set_pause_btn_enabled(False)
+        self._update_pause_btn(mode='pause', disabled=True)
 
 
 class TimeTrackerApp(App):
@@ -493,9 +547,6 @@ class TimeTrackerApp(App):
         super().__init__()
 
     def build(self):
-        # self.theme_cls.theme_style = "Dark"
-        # self.theme_cls.primary_palette = "Cyan"
-        # self.theme_cls.primary_hue = "200"
         self.title = WINDOW_TITLE
         self.icon = 'icon/icon64.png'
         return Boxes(self)
