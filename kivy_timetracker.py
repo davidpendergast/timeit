@@ -37,6 +37,7 @@ FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
 SECONDARY_COLOR = tuple(x/255. for x in (240, 240, 240))
 BG_COLOR = tuple(x/255. for x in (0, 0, 0))
 DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
+ACCENT_COLOR = (1, 0, 0)
 
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
@@ -141,10 +142,12 @@ class RowData:
     def add_time_ms(self, millis):
         self.elapsed_time += millis
         self.update_button_label()
+        self.update_colors()
 
     def set_time_ms(self, millis):
         self.elapsed_time = millis
         self.update_button_label()
+        self.update_colors()
 
     def get_time_ms(self):
         return self.elapsed_time
@@ -157,10 +160,32 @@ class RowData:
 
     def update_button_label(self):
         self.timer_btn.text = self.get_time_str()
-        self.timer_btn.update_colors()
+
+    def update_colors(self):
+        for widget in self.row_widget.children:  # TODO recurse
+            if isinstance(widget, ColorUpdatable):
+                widget.update_colors()
 
 
-class LineBorderWidget(Widget):
+class ColorUpdatable:
+
+    def __init__(self, *args, **kwargs):
+        self.update_colors()
+
+    def calc_text_color(self):
+        return SECONDARY_COLOR
+
+    def calc_line_color(self):
+        return SECONDARY_COLOR
+
+    def calc_fill_color(self):
+        return BG_COLOR
+
+    def update_colors(self):
+        pass
+
+
+class LineBorderWidget(Widget, ColorUpdatable):
     line_color = ColorProperty(DISABLED_FG_COLOR)
 
     def __init__(self, *args, **kwargs):
@@ -170,13 +195,30 @@ class LineBorderWidget(Widget):
         self.background_disabled_normal = ''
         self.background_disabled_down = ''
 
+    def calc_line_color(self):
+        return DISABLED_FG_COLOR
+
+    def update_colors(self):
+        self.line_color = self.calc_line_color()
+
 class MyButton(Button, HoverBehavior, LineBorderWidget):
 
     def on_enter(self, *args):
-        self.line_color = FG_COLOR
+        self.update_colors()
 
     def on_leave(self, *args):
-        self.line_color = DISABLED_FG_COLOR
+        self.update_colors()
+
+    def calc_line_color(self):
+        if self.disabled or not self.hovering:
+            return DISABLED_FG_COLOR
+        else:
+            return FG_COLOR
+
+    def update_colors(self):
+        super().update_colors()
+        self.color = self.calc_text_color()
+        self.background_color = self.calc_fill_color()
 
 
 class MyTextInput(TextInput, LineBorderWidget):
@@ -184,8 +226,14 @@ class MyTextInput(TextInput, LineBorderWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def calc_line_color(self):
+        if self.focused:
+            return SECONDARY_COLOR
+        else:
+            return DISABLED_FG_COLOR
 
-class MyToggleButton(ToggleButton, HoverBehavior):
+
+class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
 
     line_color = ColorProperty(DISABLED_FG_COLOR)
 
@@ -303,10 +351,15 @@ class Boxes(BoxLayout):
                 self.row_lookup[i].timer_btn.update_colors()
                 self.active_row_id = -1
                 self._update_pause_btn(mode='pause', disabled=True)
+            elif i == self.active_row_id_before_pause[0]:
+                self.active_row_id_before_pause[0] = -1
+                self._update_pause_btn(mode='pause', disabled=True)
+
+            self.update_row_colors(i)
 
     def update_row_colors(self, i):
         if i in self.row_lookup:
-            self.row_lookup[i].timer_btn.update_colors()
+            self.row_lookup[i].update_colors()
 
     def _make_text_input(self, hint_text="") -> TextInput:
         text_fld = MyTextInput(
@@ -366,7 +419,7 @@ class Boxes(BoxLayout):
             else:
                 self.active_row_id = -1
                 self._update_pause_btn(mode='pause', disabled=True)
-            btn.update_colors()
+            self.update_row_colors(i)
 
         timer_toggle_btn.bind(on_press=on_checkbox_active)
 
@@ -387,8 +440,6 @@ class Boxes(BoxLayout):
             else:
                 return BG_COLOR
         timer_toggle_btn.calc_fill_color = calc_timer_bg_color
-
-        timer_toggle_btn.update_colors()
 
         row.add_widget(timer_toggle_btn)
 
@@ -431,12 +482,38 @@ class Boxes(BoxLayout):
         clear_btn.text = "Clear"
         clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         clear_btn.on_release = lambda: self.clear_row_time(i)
+
+        def calc_clear_btn_text_color():
+            if timer_toggle_btn.text in ('', ZERO_TIME) and \
+                    i not in (self.active_row_id, self.active_row_id_before_pause[0]):
+                return DISABLED_FG_COLOR
+            elif clear_btn.hovering:
+                return FG_COLOR
+            else:
+                return SECONDARY_COLOR
+        clear_btn.calc_text_color = calc_clear_btn_text_color
+
+        def calc_clear_btn_line_color():
+            if timer_toggle_btn.text in ('', ZERO_TIME) and \
+                    i not in (self.active_row_id, self.active_row_id_before_pause[0]):
+                return DISABLED_FG_COLOR
+            elif clear_btn.hovering:
+                return FG_COLOR
+            else:
+                return DISABLED_FG_COLOR
+        clear_btn.calc_line_color = calc_clear_btn_line_color
+
         row.add_widget(clear_btn)
 
         def create_popup(_):
             edit_field = self._make_text_input('+/- Minutes')
             ok_btn = MyButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
+            ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
+            ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
+
             cancel_btn = MyButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
+            cancel_btn.calc_text_color = lambda: ACCENT_COLOR if cancel_btn.hovering else SECONDARY_COLOR
+            cancel_btn.calc_line_color = lambda: ACCENT_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
 
             content = BoxLayout(orientation='vertical')
             content.spacing = 4
@@ -493,18 +570,25 @@ class Boxes(BoxLayout):
         edit_btn.text = "Edit"
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         edit_btn.bind(on_release=create_popup)
+        edit_btn.calc_line_color = lambda: FG_COLOR if edit_btn.hovering else DISABLED_FG_COLOR
+        edit_btn.calc_text_color = lambda: FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
         row.add_widget(edit_btn)
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "="
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
+        drag_btn.calc_line_color = lambda: FG_COLOR if drag_btn.hovering else DISABLED_FG_COLOR
+        drag_btn.calc_text_color = lambda: FG_COLOR if drag_btn.hovering else SECONDARY_COLOR
         row.add_widget(drag_btn)
 
         remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         remove_btn.text = "✖"
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
-        row.add_widget(remove_btn)
         remove_btn.on_release = lambda: self.remove_row(i)
+        remove_btn.calc_line_color = lambda: ACCENT_COLOR if remove_btn.hovering else DISABLED_FG_COLOR
+        remove_btn.calc_text_color = lambda: ACCENT_COLOR if remove_btn.hovering else SECONDARY_COLOR
+
+        row.add_widget(remove_btn)
 
         self.boxes.add_widget(row)
         self._update_boxes_height()
@@ -512,6 +596,8 @@ class Boxes(BoxLayout):
         row_data = RowData(row, timer_toggle_btn, textinput)
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
+
+        self.update_row_colors(i)
 
     def _update_pause_btn(self, mode='pause', disabled=False):
         self.pause_btn.disabled = disabled
@@ -532,7 +618,7 @@ class Boxes(BoxLayout):
                 if self.active_row_id_before_pause[0] in self.row_lookup:
                     self.active_row_id = self.active_row_id_before_pause[0]
                     self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.state = "down"
-                    self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.update_colors()
+                    self.update_row_colors(self.active_row_id_before_pause[0])
                 btn.text = "Pause"
                 self.active_row_id_before_pause[0] = -1
             btn.update_colors()
