@@ -1,16 +1,17 @@
 import traceback
 import typing
 
-from kivymd.app import MDApp
+from kivy.app import App
 from kivy.lang import Builder
 
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.togglebutton import ToggleButton
+from kivy.properties import ColorProperty
 
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDRectangleFlatButton
-from kivymd.uix.behaviors.toggle_behavior import MDToggleButton
 from kivymd.uix.behaviors import HoverBehavior
 
 from kivy.clock import Clock
@@ -31,8 +32,14 @@ LabelBase.register(name=REGULAR_FONT,
 
 WINDOW_TITLE = "TimeIt"
 
+FG_COLOR = tuple(x/255. for x in (128, 222, 234))
+SECONDARY_COLOR = tuple(x/255. for x in (240, 240, 240))
+BG_COLOR = tuple(x/255. for x in (0, 0, 0))
+DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
+
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
+SPACING = 4  # sp
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 ZERO_TIME = "0:00:00"
 
@@ -42,39 +49,44 @@ Builder.load_string(f"""
     font_name: '{REGULAR_FONT}'
     font_size: '{REGULAR_FONT_SIZE}sp'
     
-<TextInput>:
-    padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
-    background_normal: ''
-    background_active: ''
-    background_disabled_normal: ''
-    background_disabled_down: ''
-    line_anim: False
-    
+<LineBorderWidget>:
+    background_color: {BG_COLOR}
+
     canvas.after:
         Color:
-            rgba: app.theme_cls.text_color if self.focus else app.theme_cls.disabled_primary_color
+            rgba: self.line_color
         Line:
-            points: self.pos[0], self.pos[1], self.pos[0] + self.size[0], self.pos[1]
-        Line:
-            points: self.pos[0], self.pos[1] + self.size[1], self.pos[0] + self.size[0], self.pos[1] + self.size[1]
-        Line:
-            points: self.pos[0], self.pos[1], self.pos[0], self.pos[1] + self.size[1]
-        Line:
-            points: self.pos[0] + self.size[0], self.pos[1], self.pos[0] + self.size[0], self.pos[1] + self.size[1]
+            width: 1
+            close: True
+            points: self.pos[0], self.pos[1], \
+                    self.pos[0] + self.size[0], self.pos[1], \
+                    self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
+                    self.pos[0], self.pos[1] + self.size[1]
     
-    background_color: app.theme_cls.bg_normal
-    foreground_color: app.theme_cls.text_color
+<MyTextInput>:
+    padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
     
-    hint_text_color: app.theme_cls.disabled_hint_text_color
-    cursor_color: app.theme_cls.text_color
-
-<MyToggleButton>:
-    ripple_scale: 0
+    foreground_color: {SECONDARY_COLOR}  
+    hint_text_color: {DISABLED_FG_COLOR}
+    cursor_color: {SECONDARY_COLOR}
+    
+<Button>:
+    font_name: '{REGULAR_FONT}'
     font_size: '{REGULAR_FONT_SIZE}sp'
-    text_color: app.theme_cls.bg_normal if (self.state == 'down') else \
-            (app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color)
-    font_color_normal: app.theme_cls.disabled_hint_text_color if self.text == '{ZERO_TIME}' else app.theme_cls.primary_color
-    font_color_down: app.theme_cls.bg_normal
+    
+<MyToggleButton>:
+    background_color: {BG_COLOR}
+    color: {FG_COLOR} if self.state == 'down' else {SECONDARY_COLOR}
+    canvas.after:
+        Color:
+            rgba: self.line_color
+        Line:
+            width: 1
+            close: True
+            points: self.pos[0] + 1, self.pos[1], \
+                    self.pos[0] + self.size[0], self.pos[1], \
+                    self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
+                    self.pos[0] + 1, self.pos[1] + self.size[1]
 
 <Boxes>:
     id: _parent
@@ -96,22 +108,26 @@ Builder.load_string(f"""
         scroll_type: ['bars']
         bar_width: 4
     
-        MDBoxLayout: 
+        BoxLayout: 
             id: _boxes
             orientation: 'vertical'
         
-    MDBoxLayout:
+    BoxLayout:
         orientation: 'horizontal'
         size_hint: (1, None)
         height: '{ROW_HEIGHT}sp'
         MyToggleButton:
             id: _pause_btn
             font_size: '{REGULAR_FONT_SIZE}sp'
+            size_hint: (None, 1)
+            width: '{ROW_HEIGHT * 4}sp'
         FloatLayout:
-        MyMDRectangleFlatButton:
+        MyButton:
             text: 'Add Activity'
-            font_size: '{REGULAR_FONT_SIZE}sp'
             on_press: _parent.add_row()
+            font_size: '{REGULAR_FONT_SIZE}sp'
+            size_hint: (None, 1)
+            width: '{ROW_HEIGHT * 4 + SPACING * 2}sp'
 """)
 
 
@@ -144,32 +160,58 @@ class RowData:
         self.timer_btn.text = self.get_time_str()
 
 
-class MyMDRectangleFlatButton(MDRectangleFlatButton, HoverBehavior):
+class LineBorderWidget(Widget):
+    line_color = ColorProperty(DISABLED_FG_COLOR)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.background_normal = ''
+        self.background_active = ''
+        self.background_disabled_normal = ''
+        self.background_disabled_down = ''
+
+class MyButton(Button, HoverBehavior, LineBorderWidget):
 
     def on_enter(self, *args):
-        self.line_color = self.theme_cls.text_color
+        self.line_color = FG_COLOR
 
     def on_leave(self, *args):
-        self.line_color = self.theme_cls.primary_color
+        self.line_color = DISABLED_FG_COLOR
 
 
-class MyToggleButton(MyMDRectangleFlatButton, MDToggleButton):
+class MyTextInput(TextInput, LineBorderWidget):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class MyToggleButton(ToggleButton, HoverBehavior):
+
+    line_color = ColorProperty(DISABLED_FG_COLOR)
+    pressed_color = ColorProperty(FG_COLOR)
 
     def __init__(self, **kwargs):
-        self.background_normal = [1, 1, 1, 1]  # bug?~
         super().__init__(**kwargs)
-        self.background_normal = self.theme_cls.bg_normal
-        self.background_down = self.theme_cls.primary_color
+        self.background_normal = 'button_texture.png'
+        self.background_active = 'button_texture.png'
+        self.background_disabled_normal = 'button_texture.png'
+        self.background_disabled_down = 'button_texture.png'
+
+    def on_enter(self, *args):
+        self.line_color = FG_COLOR
+
+    def on_leave(self, *args):
+        self.line_color = DISABLED_FG_COLOR
 
 
-class Boxes(MDBoxLayout):
+class Boxes(BoxLayout):
 
     def __init__(self, parent, **kwargs):
         super(Boxes, self).__init__(**kwargs)
         self._parent = parent
         self._btn_group = 'group0'
         self.boxes.size_hint = (1, None)
-        self.boxes.spacing = '4sp'
+        self.boxes.spacing = f'{SPACING}sp'
 
         self.activity_id_counter = 0
 
@@ -233,7 +275,7 @@ class Boxes(MDBoxLayout):
                 self.set_pause_btn_enabled(False)
 
     def _make_text_input(self, hint_text="") -> TextInput:
-        return TextInput(
+        text_fld = MyTextInput(
             text=f"",
             hint_text=hint_text,
             font_name=REGULAR_FONT,
@@ -242,6 +284,16 @@ class Boxes(MDBoxLayout):
             size_hint=(1, None),
             multiline=False,
             write_tab=False)
+
+        def on_focus(instance, value):
+            print(f"FOCUSED?! = {value}")
+            if value:
+                instance.line_color = SECONDARY_COLOR
+            else:
+                instance.line_color = DISABLED_FG_COLOR
+
+        text_fld.bind(focus=on_focus)
+        return text_fld
 
     def select_text_field(self, i, cursor_col=0):
         if i in self.row_lookup:
@@ -265,7 +317,7 @@ class Boxes(MDBoxLayout):
         self.activity_id_counter += 1
 
         row_height = f'{ROW_HEIGHT}sp'
-        row = MDBoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
+        row = BoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
         row.spacing = self.boxes.spacing
 
         timer_toggle_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
@@ -275,10 +327,13 @@ class Boxes(MDBoxLayout):
         def on_checkbox_active(btn):
             if btn.state == "down":
                 self.active_row_id = i
-                self.set_pause_btn_enabled(True)
+                self._update_pause_btn(mode='pause', disabled=False)
+                btn.background_color = (1, 0, 0)
             else:
                 self.active_row_id = -1
                 self.set_pause_btn_enabled(False)
+                self._update_pause_btn(mode='pause', disabled=True)
+                btn.background_color = BG_COLOR
         timer_toggle_btn.bind(on_press=on_checkbox_active)
         row.add_widget(timer_toggle_btn)
 
@@ -317,7 +372,7 @@ class Boxes(MDBoxLayout):
 
         row.add_widget(textinput)
 
-        clear_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        clear_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         clear_btn.text = "Clear"
         clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         clear_btn.on_release = lambda: self.clear_row_time(i)
@@ -325,17 +380,17 @@ class Boxes(MDBoxLayout):
 
         def create_popup(_):
             edit_field = self._make_text_input('+/- Minutes')
-            ok_btn = MyMDRectangleFlatButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
-            cancel_btn = MyMDRectangleFlatButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
+            ok_btn = MyButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
+            cancel_btn = MyButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
 
-            content = MDBoxLayout(orientation='vertical')
+            content = BoxLayout(orientation='vertical')
             content.spacing = 4
 
             content.add_widget(Widget())
             content.add_widget(edit_field)
             content.add_widget(Widget())
 
-            btn_row = MDBoxLayout(orientation='horizontal')
+            btn_row = BoxLayout(orientation='horizontal')
             btn_row.size_hint = (1, None)
             btn_row.height = f'{ROW_HEIGHT}sp'
             btn_row.add_widget(Widget())
@@ -352,7 +407,7 @@ class Boxes(MDBoxLayout):
             popup.title_font = REGULAR_FONT
             popup.title_size = REGULAR_FONT_SIZE
 
-            popup.separator_color = self._parent.theme_cls.primary_color
+            popup.separator_color = FG_COLOR
 
             popup.size_hint = (None, None)
             popup.size = ('400sp', '168sp')
@@ -379,18 +434,18 @@ class Boxes(MDBoxLayout):
             # open the popup
             popup.open()
 
-        edit_btn = MyMDRectangleFlatButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        edit_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         edit_btn.bind(on_release=create_popup)
         row.add_widget(edit_btn)
 
-        drag_btn = MyMDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
+        drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "="
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(drag_btn)
 
-        remove_btn = MyMDRectangleFlatButton(size=(row_height, row_height), size_hint=(None, None))
+        remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         remove_btn.text = "✖"
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         row.add_widget(remove_btn)
@@ -406,8 +461,12 @@ class Boxes(MDBoxLayout):
     def set_pause_btn_enabled(self, val):
         self.pause_btn.disabled = not val
 
+    def _update_pause_btn(self, mode='pause', disabled=False):
+        self.pause_btn.disabled = disabled
+        self.pause_btn.text = "Pause" if mode == 'pause' else "Resume"
+
     def _build_pause_btn(self):
-        self.pause_btn.text = " Pause "
+        self.pause_btn.text = "Pause"
         self.pause_btn.group = self._btn_group
 
         active_row_id_before_pause = [-1]
@@ -415,28 +474,28 @@ class Boxes(MDBoxLayout):
         def on_checkbox_active(btn):
             if btn.state == "down":
                 active_row_id_before_pause[0] = self.active_row_id
-                btn.text = "Unpause"
+                btn.text = "Resume"
                 self.active_row_id = -1
             else:
                 if active_row_id_before_pause[0] in self.row_lookup:
                     self.active_row_id = active_row_id_before_pause[0]
                     self.row_lookup[active_row_id_before_pause[0]].timer_btn.state = "down"
-                btn.text = " Pause "
+                btn.text = "Pause"
                 active_row_id_before_pause[0] = -1
 
         self.pause_btn.bind(on_press=on_checkbox_active)
         self.set_pause_btn_enabled(False)
 
 
-class TimeTrackerApp(MDApp):
+class TimeTrackerApp(App):
 
     def __init__(self):
         super().__init__()
 
     def build(self):
-        self.theme_cls.theme_style = "Dark"
-        self.theme_cls.primary_palette = "Cyan"
-        self.theme_cls.primary_hue = "200"
+        # self.theme_cls.theme_style = "Dark"
+        # self.theme_cls.primary_palette = "Cyan"
+        # self.theme_cls.primary_hue = "200"
         self.title = WINDOW_TITLE
         self.icon = 'icon/icon64.png'
         return Boxes(self)
