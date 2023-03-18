@@ -16,6 +16,7 @@ from kivymd.uix.behaviors import HoverBehavior
 
 from kivy.clock import Clock
 from kivy.config import Config
+from kivy.core.window import Window
 from kivy.core.text import LabelBase
 
 import os
@@ -47,7 +48,7 @@ ZERO_TIME = "0:00:00"
 
 
 Builder.load_string(f"""
-<MDLabel>:
+<Label>:
     font_name: '{REGULAR_FONT}'
     font_size: '{REGULAR_FONT_SIZE}sp'
     
@@ -205,10 +206,18 @@ class LineBorderWidget(Widget, ColorUpdatable):
 
 class MyButton(Button, HoverBehavior, LineBorderWidget):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hover_cursor = None
+
     def on_enter(self, *args):
+        if self.hover_cursor is not None:
+            Window.set_system_cursor(self.hover_cursor)
         self.update_colors()
 
     def on_leave(self, *args):
+        if self.hover_cursor is not None:
+            Window.set_system_cursor('arrow')
         self.update_colors()
 
     def calc_line_color(self):
@@ -223,10 +232,18 @@ class MyButton(Button, HoverBehavior, LineBorderWidget):
         self.background_color = self.calc_fill_color()
 
 
-class MyTextInput(TextInput, LineBorderWidget):
+class MyTextInput(TextInput, HoverBehavior, LineBorderWidget):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def on_enter(self, *args):
+        Window.set_system_cursor('ibeam')
+        self.update_colors()
+
+    def on_leave(self, *args):
+        Window.set_system_cursor('arrow')
+        self.update_colors()
 
     def calc_line_color(self):
         if self.focused:
@@ -364,7 +381,7 @@ class Boxes(BoxLayout):
         if i in self.row_lookup:
             self.row_lookup[i].update_colors()
 
-    def _make_text_input(self, hint_text="") -> TextInput:
+    def _make_text_input(self, hint_text="") -> MyTextInput:
         text_fld = MyTextInput(
             text=f"",
             hint_text=hint_text,
@@ -376,12 +393,9 @@ class Boxes(BoxLayout):
             write_tab=False)
 
         def on_focus(instance, value):
-            if value:
-                instance.line_color = SECONDARY_COLOR
-            else:
-                instance.line_color = DISABLED_FG_COLOR
-
+            text_fld.update_colors()
         text_fld.bind(focus=on_focus)
+
         return text_fld
 
     def select_text_field(self, i, cursor_col=0):
@@ -580,6 +594,7 @@ class Boxes(BoxLayout):
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "="
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
+        drag_btn.hover_cursor = 'size_ns'
         drag_btn.calc_line_color = lambda: FG_COLOR if drag_btn.hovering else DISABLED_FG_COLOR
         drag_btn.calc_text_color = lambda: FG_COLOR if drag_btn.hovering else SECONDARY_COLOR
         row.add_widget(drag_btn)
