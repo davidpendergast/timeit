@@ -92,6 +92,7 @@ Builder.load_string(f"""
     id: _parent
     boxes: _boxes 
     pause_btn: _pause_btn
+    add_btn: _add_btn
     orientation: 'vertical'
     padding: 8
         
@@ -123,6 +124,7 @@ Builder.load_string(f"""
             width: '{ROW_HEIGHT * 4}sp'
         FloatLayout:
         MyButton:
+            id: _add_btn
             text: 'Add Activity'
             on_press: _parent.add_row()
             font_size: '{REGULAR_FONT_SIZE}sp'
@@ -269,9 +271,9 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
 
     def calc_line_color(self):
         if self.hovering and not self.disabled:
-            return FG_COLOR
+            return BG_COLOR if self.state == 'down' else FG_COLOR
         else:
-            return DISABLED_FG_COLOR
+            return FG_COLOR if self.state == 'down' else DISABLED_FG_COLOR
 
     def update_colors(self):
         self.line_color = self.calc_line_color()
@@ -300,6 +302,7 @@ class Boxes(BoxLayout):
             self.add_row()
 
         self._build_pause_btn()
+        self._build_add_btn()
 
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
@@ -607,6 +610,8 @@ class Boxes(BoxLayout):
     def _build_pause_btn(self):
         self.pause_btn.text = "Pause"
         self.pause_btn.group = self._btn_group
+        # self.pause_btn.calc_text_color = lambda: FG_COLOR if self.pause_btn.hovering else SECONDARY_COLOR
+        # self.pause_btn.calc_line_color = lambda: FG_COLOR if self.pause_btn.hovering else DISABLED_FG_COLOR
 
         def on_checkbox_active(btn):
             if btn.state == "down":
@@ -625,6 +630,10 @@ class Boxes(BoxLayout):
 
         self.pause_btn.bind(on_press=on_checkbox_active)
         self._update_pause_btn(mode='pause', disabled=True)
+
+    def _build_add_btn(self):
+        self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovering else SECONDARY_COLOR
+        self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovering else DISABLED_FG_COLOR
 
 
 class TimeTrackerApp(App):
