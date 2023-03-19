@@ -8,6 +8,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.properties import ColorProperty
@@ -95,44 +96,46 @@ Builder.load_string(f"""
     boxes: _boxes 
     pause_btn: _pause_btn
     add_btn: _add_btn
-    orientation: 'vertical'
-    padding: 8
-        
-    Image:
-        source: 'logo.png'
-        size_hint: (1, None)
-        size: (self.texture_size[0], self.texture_size[1] * 1.25)
     
-    MDScrollView:
-        id: _scroller
-        effect_cls: 'ScrollEffect'
-        do_scroll_x: False
-        do_scroll_y: True
-        
-        scroll_type: ['bars']
-        bar_width: 4
-    
-        BoxLayout: 
-            id: _boxes
-            orientation: 'vertical'
-        
     BoxLayout:
-        orientation: 'horizontal'
-        size_hint: (1, None)
-        height: '{ROW_HEIGHT}sp'
-        MyToggleButton:
-            id: _pause_btn
-            font_size: '{REGULAR_FONT_SIZE}sp'
-            size_hint: (None, 1)
-            width: '{ROW_HEIGHT * 4}sp'
-        FloatLayout:
-        MyButton:
-            id: _add_btn
-            text: 'Add Activity'
-            on_press: _parent.add_row()
-            font_size: '{REGULAR_FONT_SIZE}sp'
-            size_hint: (None, 1)
-            width: '{ROW_HEIGHT * 4 + SPACING * 2}sp'
+        orientation: 'vertical'
+        padding: 8
+            
+        Image:
+            source: 'logo.png'
+            size_hint: (1, None)
+            size: (self.texture_size[0], self.texture_size[1] * 1.25)
+        
+        MDScrollView:
+            id: _scroller
+            effect_cls: 'ScrollEffect'
+            do_scroll_x: False
+            do_scroll_y: True
+            
+            scroll_type: ['bars']
+            bar_width: 4
+        
+            BoxLayout: 
+                id: _boxes
+                orientation: 'vertical'
+            
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint: (1, None)
+            height: '{ROW_HEIGHT}sp'
+            MyToggleButton:
+                id: _pause_btn
+                font_size: '{REGULAR_FONT_SIZE}sp'
+                size_hint: (None, 1)
+                width: '{ROW_HEIGHT * 4}sp'
+            FloatLayout:
+            MyButton:
+                id: _add_btn
+                text: 'Add Activity'
+                on_press: _parent.add_row()
+                font_size: '{REGULAR_FONT_SIZE}sp'
+                size_hint: (None, 1)
+                width: '{ROW_HEIGHT * 4 + SPACING * 2}sp'
 """)
 
 
@@ -300,7 +303,7 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
         self.background_color = self.calc_fill_color()
 
 
-class Boxes(BoxLayout):
+class Boxes(FloatLayout):
 
     def __init__(self, parent, **kwargs):
         super(Boxes, self).__init__(**kwargs)
@@ -324,17 +327,23 @@ class Boxes(BoxLayout):
         self._build_add_btn()
 
         self.floating_row = -1
-        Window.bind(on_motion=lambda _, etype, me: self.update_floating_row(etype, me))
+        self.floating_row_widget = None
+        Window.bind(on_motion=lambda _, etype, me: self.handle_mouse_motion(etype, me))
         Window.bind(on_touch_up=lambda *_: self.release_floating_row())
 
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
-    def start_dragging_row(self, i):
-        self.floating_row = i
-
-    def update_floating_row(self, etype, me):
+    def handle_mouse_motion(self, etype, me):
         if self.floating_row >= 0:
-            hover_order_idx = self.get_row_order_idx_at(me.spos, constrain=True)
+            Clock.schedule_once(lambda dt: self.update_floating_row(me.spos))
+
+    def start_dragging_row(self, i, me):
+        self.floating_row = i
+        Clock.schedule_once(lambda dt: self.update_floating_row(me.spos))
+
+    def update_floating_row(self, mouse_sxy):
+        if self.floating_row >= 0:
+            hover_order_idx = self.get_row_order_idx_at(mouse_sxy, constrain=True)
 
             new_ordering = []
             for row_id in self.row_ordering:
@@ -344,11 +353,25 @@ class Boxes(BoxLayout):
                     new_ordering.append(row_id)
             if len(new_ordering) == hover_order_idx:
                 new_ordering.append(-2)
-
             self.reorder_rows(new_ordering)
+
+            if self.floating_row_widget is None:
+                self.floating_row_widget = BoxLayout(size_hint=(None, None),
+                                                     size=(self.size[0] - SPACING * 2, ROW_HEIGHT))
+                self.floating_row_widget.add_widget(self.row_lookup[self.floating_row].row_widget)
+                self.add_widget(self.floating_row_widget)
+
+            self.floating_row_widget.pos = (SPACING, Window.size[1] * mouse_sxy[1] - ROW_HEIGHT / 2)
 
     def release_floating_row(self):
         if self.floating_row >= 0:
+
+            if self.floating_row_widget is not None:
+                for child in list(self.floating_row_widget.children):
+                    self.floating_row_widget.remove_widget(child)
+                self.remove_widget(self.floating_row_widget)
+                self.floating_row_widget = None
+
             new_ordering = [(row_id if row_id >= 0 else self.floating_row) for row_id in self.row_ordering]
             self.reorder_rows(new_ordering)
 
@@ -407,7 +430,7 @@ class Boxes(BoxLayout):
 
     def _update_boxes_height(self):
         n = len(self.boxes.children)
-        self.boxes.height = f"{(ROW_HEIGHT + int(str(self.boxes.spacing)[:-2])) * n}sp"
+        self.boxes.height = f"{ROW_HEIGHT * n + int(str(self.boxes.spacing)[:-2]) * (n - 1)}sp"
 
     def remove_row(self, i):
         if i in self.row_lookup:
@@ -652,12 +675,12 @@ class Boxes(BoxLayout):
         row.add_widget(edit_btn)
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
-        drag_btn.text = "="
+        drag_btn.text = "↕"
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         drag_btn.hover_cursor = 'size_ns'
         drag_btn.calc_line_color = lambda: FG_COLOR if drag_btn.hovering else DISABLED_FG_COLOR
         drag_btn.calc_text_color = lambda: FG_COLOR if drag_btn.hovering else SECONDARY_COLOR
-        drag_btn.bind(on_press=lambda _: self.start_dragging_row(i))
+        drag_btn.bind(on_touch_down=lambda btn, me: drag_btn.collide_point(*me.pos) and self.start_dragging_row(i, me))
         row.add_widget(drag_btn)
 
         remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
