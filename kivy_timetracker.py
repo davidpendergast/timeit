@@ -24,6 +24,7 @@ import os
 os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
+Window.size = (800, 480)
 
 REGULAR_FONT = 'DejaVuSansMono'
 LabelBase.register(name=REGULAR_FONT,
@@ -70,7 +71,6 @@ Builder.load_string(f"""
     
 <MyTextInput>:
     padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
-    
     foreground_color: {SECONDARY_COLOR}  
     hint_text_color: {DISABLED_FG_COLOR}
     cursor_color: {SECONDARY_COLOR}
@@ -92,7 +92,6 @@ Builder.load_string(f"""
                     self.pos[0] + 1, self.pos[1] + self.size[1], \
                     self.pos[0] + 1, self.pos[1]
                     
-
 <Boxes>:
     id: _parent
     scroller: _scroller
@@ -114,7 +113,6 @@ Builder.load_string(f"""
             effect_cls: 'ScrollEffect'
             do_scroll_x: False
             do_scroll_y: True
-            
             scroll_type: ['bars']
             bar_width: 4
         
@@ -439,8 +437,13 @@ class Boxes(FloatLayout):
             row_widget = self.row_lookup[i].row_widget
             self.boxes.remove_widget(row_widget)
             self._update_boxes_height()
+
             del self.row_lookup[i]
             self.row_ordering.remove(i)
+
+            if self.active_row_id_before_pause[0] == i:
+                self.active_row_id_before_pause[0] = -1
+                self._update_pause_btn(mode='pause', disabled=True)
 
             if self.active_row_id == i:
                 self.update_row_colors(self.active_row_id)
@@ -508,12 +511,16 @@ class Boxes(FloatLayout):
         row = BoxLayout(orientation='horizontal', height=row_height, size_hint=(1, None))
         row.spacing = self.boxes.spacing
 
-        timer_toggle_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
-        timer_toggle_btn.group = self._btn_group
-        timer_toggle_btn.text = ZERO_TIME
+        timer_btn = MyToggleButton(size=(f'{ROW_HEIGHT * 4}sp', row_height), size_hint=(None, None))
+        timer_btn.group = self._btn_group
+        timer_btn.text = ZERO_TIME
 
-        def on_checkbox_active(btn):
-            self.active_row_id_before_pause[0] = -1
+        def on_timer_btn_press(btn):
+            if self.active_row_id_before_pause[0] >= 0:
+                was_paused_id = self.active_row_id_before_pause[0]
+                self.active_row_id_before_pause[0] = -1
+                self.update_row_colors(was_paused_id)
+
             if btn.state == "down":
                 self.update_row_colors(self.active_row_id)  # update old row
                 self.active_row_id = i
@@ -523,27 +530,27 @@ class Boxes(FloatLayout):
                 self._update_pause_btn(mode='pause', disabled=True)
             self.update_row_colors(i)
 
-        timer_toggle_btn.bind(on_press=on_checkbox_active)
+        timer_btn.bind(on_press=on_timer_btn_press)
 
         def calc_timer_text_color():
-            if timer_toggle_btn.disabled or timer_toggle_btn.state == "down":
+            if timer_btn.disabled or timer_btn.state == "down":
                 return BG_COLOR
-            elif timer_toggle_btn.text in ('', ZERO_TIME):
+            elif timer_btn.text in ('', ZERO_TIME):
                 return DISABLED_FG_COLOR
             else:
                 return FG_COLOR
-        timer_toggle_btn.calc_text_color = calc_timer_text_color
+        timer_btn.calc_text_color = calc_timer_text_color
 
         def calc_timer_bg_color():
-            if timer_toggle_btn.state == "down":
-                return FG_COLOR if not timer_toggle_btn.disabled else FG_COLOR_DIM
+            if timer_btn.state == "down":
+                return FG_COLOR if not timer_btn.disabled else FG_COLOR_DIM
             elif self.active_row_id_before_pause[0] == i:
                 return FG_COLOR_DIM
             else:
                 return BG_COLOR
-        timer_toggle_btn.calc_fill_color = calc_timer_bg_color
+        timer_btn.calc_fill_color = calc_timer_bg_color
 
-        row.add_widget(timer_toggle_btn)
+        row.add_widget(timer_btn)
 
         textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
 
@@ -586,7 +593,7 @@ class Boxes(FloatLayout):
         clear_btn.on_release = lambda: self.clear_row_time(i)
 
         def calc_clear_btn_text_color():
-            if timer_toggle_btn.text in ('', ZERO_TIME) and \
+            if timer_btn.text in ('', ZERO_TIME) and \
                     i not in (self.active_row_id, self.active_row_id_before_pause[0]):
                 return DISABLED_FG_COLOR
             elif clear_btn.hovering:
@@ -596,7 +603,7 @@ class Boxes(FloatLayout):
         clear_btn.calc_text_color = calc_clear_btn_text_color
 
         def calc_clear_btn_line_color():
-            if timer_toggle_btn.text in ('', ZERO_TIME) and \
+            if timer_btn.text in ('', ZERO_TIME) and \
                     i not in (self.active_row_id, self.active_row_id_before_pause[0]):
                 return DISABLED_FG_COLOR
             elif clear_btn.hovering:
@@ -697,7 +704,7 @@ class Boxes(FloatLayout):
         self.boxes.add_widget(row)
         self._update_boxes_height()
 
-        row_data = RowData(row, timer_toggle_btn, textinput)
+        row_data = RowData(row, timer_btn, textinput)
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
 
