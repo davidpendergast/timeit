@@ -61,11 +61,12 @@ Builder.load_string(f"""
             rgba: self.line_color
         Line:
             width: 1
-            close: True
-            points: self.pos[0], self.pos[1], \
-                    self.pos[0] + self.size[0], self.pos[1], \
+            close: False
+            points: self.pos[0], self.pos[1] + 1, \
+                    self.pos[0] + self.size[0], self.pos[1] + 1, \
                     self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
-                    self.pos[0], self.pos[1] + self.size[1]
+                    self.pos[0], self.pos[1] + self.size[1], \
+                    self.pos[0] + 1, self.pos[1]
     
 <MyTextInput>:
     padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
@@ -84,11 +85,13 @@ Builder.load_string(f"""
             rgba: self.line_color
         Line:
             width: 1
-            close: True
-            points: self.pos[0] + 1, self.pos[1], \
-                    self.pos[0] + self.size[0], self.pos[1], \
+            close: False
+            points: self.pos[0] + 1, self.pos[1] + 1, \
+                    self.pos[0] + self.size[0], self.pos[1] + 1, \
                     self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
-                    self.pos[0] + 1, self.pos[1] + self.size[1]
+                    self.pos[0] + 1, self.pos[1] + self.size[1], \
+                    self.pos[0] + 1, self.pos[1]
+                    
 
 <Boxes>:
     id: _parent
@@ -122,7 +125,8 @@ Builder.load_string(f"""
         BoxLayout:
             orientation: 'horizontal'
             size_hint: (1, None)
-            height: '{ROW_HEIGHT}sp'
+            height: '{ROW_HEIGHT + SPACING}sp'
+            padding: (0, '{SPACING}sp', 0, 0)
             MyToggleButton:
                 id: _pause_btn
                 font_size: '{REGULAR_FONT_SIZE}sp'
@@ -329,7 +333,7 @@ class Boxes(FloatLayout):
         self.floating_row = -1
         self.floating_row_widget = None
         Window.bind(on_motion=lambda _, etype, me: self.handle_mouse_motion(etype, me))
-        Window.bind(on_touch_up=lambda *_: self.release_floating_row())
+        Window.bind(on_touch_up=lambda _, me: self.release_floating_row(me))
 
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
@@ -363,9 +367,8 @@ class Boxes(FloatLayout):
 
             self.floating_row_widget.pos = (SPACING, Window.size[1] * mouse_sxy[1] - ROW_HEIGHT / 2)
 
-    def release_floating_row(self):
+    def release_floating_row(self, me):
         if self.floating_row >= 0:
-
             if self.floating_row_widget is not None:
                 for child in list(self.floating_row_widget.children):
                     self.floating_row_widget.remove_widget(child)
@@ -374,7 +377,6 @@ class Boxes(FloatLayout):
 
             new_ordering = [(row_id if row_id >= 0 else self.floating_row) for row_id in self.row_ordering]
             self.reorder_rows(new_ordering)
-
             self.floating_row = -1
 
     def get_row_order_idx_at(self, scr_xy, constrain=True):
@@ -579,7 +581,7 @@ class Boxes(FloatLayout):
         row.add_widget(textinput)
 
         clear_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
-        clear_btn.text = "Clear"
+        clear_btn.text = "Reset"
         clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         clear_btn.on_release = lambda: self.clear_row_time(i)
 
@@ -709,8 +711,22 @@ class Boxes(FloatLayout):
     def _build_pause_btn(self):
         self.pause_btn.text = "Pause"
         self.pause_btn.group = self._btn_group
-        # self.pause_btn.calc_text_color = lambda: FG_COLOR if self.pause_btn.hovering else SECONDARY_COLOR
-        # self.pause_btn.calc_line_color = lambda: FG_COLOR if self.pause_btn.hovering else DISABLED_FG_COLOR
+
+        def calc_pause_btn_color(for_text):
+            if self.pause_btn.disabled:
+                return DISABLED_FG_COLOR
+            elif self.pause_btn.state == 'down':
+                if self.pause_btn.hovering:
+                    return BG_COLOR
+                else:
+                    return BG_COLOR if for_text else FG_COLOR
+            elif self.pause_btn.hovering:
+                return FG_COLOR
+            else:
+                return SECONDARY_COLOR if for_text else DISABLED_FG_COLOR
+
+        self.pause_btn.calc_text_color = lambda: calc_pause_btn_color(True)
+        self.pause_btn.calc_line_color = lambda: calc_pause_btn_color(False)
 
         def on_checkbox_active(btn):
             if btn.state == "down":
