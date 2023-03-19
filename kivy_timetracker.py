@@ -1,5 +1,6 @@
 import traceback
 import typing
+import time
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -37,6 +38,13 @@ WINDOW_TITLE = "TimeIt"
 
 FG_COLOR = tuple(x/255. for x in (128, 222, 234))
 FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
+
+def set_fg_color(rgb):
+    global FG_COLOR, FG_COLOR_DIM
+    FG_COLOR = rgb
+    FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
+
+
 SECONDARY_COLOR = tuple(x/255. for x in (240, 240, 240))
 BG_COLOR = tuple(x/255. for x in (0, 0, 0))
 DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
@@ -97,6 +105,7 @@ Builder.load_string(f"""
     id: _parent
     scroller: _scroller
     boxes: _boxes 
+    title_img: _title_img
     pause_btn: _pause_btn
     add_btn: _add_btn
     
@@ -105,7 +114,8 @@ Builder.load_string(f"""
         padding: 8
             
         Image:
-            source: 'logo.png'
+            id: _title_img
+            source: 'logo_white.png'
             size_hint: (1, None)
             size: (self.texture_size[0], self.texture_size[1] * 1.25)
         
@@ -457,6 +467,7 @@ class Boxes(FloatLayout):
         if self.active_row_id in self.row_lookup:
             row_data = self.row_lookup[self.active_row_id]
             row_data.add_time_ms(int(dt * 1000))
+        self._update_foreground_color()
         self._update_window_caption()
 
     def _update_window_caption(self):
@@ -466,6 +477,10 @@ class Boxes(FloatLayout):
         else:
             caption_msg = "Paused"
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
+
+    def _update_foreground_color(self):
+        set_fg_color(get_color_for_time())
+        self.update_all_colors()
 
     def get_row_data(self, row_i=None) -> RowData:
         if row_i is None:
@@ -515,6 +530,13 @@ class Boxes(FloatLayout):
     def update_row_colors(self, i):
         if i in self.row_lookup:
             self.row_lookup[i].update_colors()
+
+    def update_all_colors(self):
+        self.title_img.color = FG_COLOR
+        for i in self.row_lookup:
+            self.row_lookup[i].update_colors()
+        self.pause_btn.update_colors()
+        self.add_btn.update_colors()
 
     def _make_text_input(self, hint_text="") -> MyTextInput:
         text_fld = MyTextInput(
@@ -863,5 +885,32 @@ class TimeTrackerApp(App):
         return Boxes(self)
 
 
+def hsv_to_rgb(h, s, v):
+    # from https://stackoverflow.com/a/26856771
+    h /= 360
+    if s == 0.0:
+        return (v, v, v)
+    i = int(h * 6.)
+    f = (h * 6.) - i
+    p, q, t = v * (1. - s), v * (1. - s * f), v * (1. - s * (1. - f))
+    i %= 6
+    if i == 0: return (v, t, p)
+    if i == 1: return (q, v, p)
+    if i == 2: return (p, v, t)
+    if i == 3: return (p, q, v)
+    if i == 4: return (t, p, v)
+    if i == 5: return (v, p, q)
+
+def get_color_for_time(t_ms=None):
+    if t_ms is None:
+        t_ms = int(time.time() * 1000)
+    ms_per_day = 8.64e+7
+    time_of_day = t_ms % ms_per_day
+    hsv = (360 * time_of_day / ms_per_day, 0.666, 1)
+    rgb = hsv_to_rgb(*hsv)
+    return rgb
+
+
 if __name__ == '__main__':
+    set_fg_color(get_color_for_time())
     TimeTrackerApp().run()
