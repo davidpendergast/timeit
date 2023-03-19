@@ -40,7 +40,8 @@ FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
 SECONDARY_COLOR = tuple(x/255. for x in (240, 240, 240))
 BG_COLOR = tuple(x/255. for x in (0, 0, 0))
 DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
-ACCENT_COLOR = (1, 0, 0)
+ACCENT_COLOR = tuple(x/255. for x in (245, 245, 66))
+CANCEL_COLOR = (1, 0, 0)
 
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
@@ -143,20 +144,21 @@ Builder.load_string(f"""
 
 class RowData:
 
-    def __init__(self, row_widget, timer_btn, textbox):
+    def __init__(self, row_widget, timer_btn, textbox, edit_btn):
         self.row_widget = row_widget
         self.timer_btn = timer_btn
         self.textbox = textbox
+        self.edit_btn = edit_btn
         self.elapsed_time = 0
 
     def add_time_ms(self, millis):
         self.elapsed_time += millis
-        self.update_button_label()
+        self.update_timer_btn_label()
         self.update_colors()
 
     def set_time_ms(self, millis):
         self.elapsed_time = millis
-        self.update_button_label()
+        self.update_timer_btn_label()
         self.update_colors()
 
     def get_time_ms(self):
@@ -168,14 +170,13 @@ class RowData:
         hours = mins // 60
         return f"{hours}:{str(mins % 60).zfill(2)}:{str(secs % 60).zfill(2)}"
 
-    def update_button_label(self):
+    def update_timer_btn_label(self):
         self.timer_btn.text = self.get_time_str()
 
     def update_colors(self):
         for widget in self.row_widget.children:  # TODO recurse
             if isinstance(widget, ColorUpdatable):
                 widget.update_colors()
-
 
 class ColorUpdatable:
 
@@ -317,6 +318,10 @@ class Boxes(FloatLayout):
         self.activity_id_counter = 0
         self.active_row_id_before_pause = [-1]
 
+        self.floating_row = -1
+        self.floating_row_widget = None
+        self.dragging_edit_btn_row = -1
+
         self._cached_cursor_col = -1
 
         self.active_row_id = -1
@@ -328,16 +333,22 @@ class Boxes(FloatLayout):
         self._build_pause_btn()
         self._build_add_btn()
 
-        self.floating_row = -1
-        self.floating_row_widget = None
         Window.bind(on_motion=lambda _, etype, me: self.handle_mouse_motion(etype, me))
-        Window.bind(on_touch_up=lambda _, me: self.release_floating_row(me))
+        Window.bind(on_touch_up=lambda _, me: self.handle_mouse_release(me))
 
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
     def handle_mouse_motion(self, etype, me):
         if self.floating_row >= 0:
             Clock.schedule_once(lambda dt: self.update_floating_row(me.spos))
+        if self.dragging_edit_btn_row >= 0:
+            self.update_all_edit_buttons()
+
+    def handle_mouse_release(self, me):
+        if self.floating_row >= 0:
+            self.release_floating_row(me)
+        if self.dragging_edit_btn_row >= 0:
+            self.release_edit_button(me)
 
     def start_dragging_row(self, i, me):
         self.floating_row = i
@@ -376,6 +387,42 @@ class Boxes(FloatLayout):
             new_ordering = [(row_id if row_id >= 0 else self.floating_row) for row_id in self.row_ordering]
             self.reorder_rows(new_ordering)
             self.floating_row = -1
+
+    def start_dragging_edit_button(self, i):
+        self.dragging_edit_btn_row = i
+        print(f"INFO: started dragging edit button {i}")
+
+    def update_all_edit_buttons(self):
+        for row_id in self.row_lookup.keys():
+            row = self.row_lookup[row_id]
+            row.edit_btn.update_colors()
+
+            if self.dragging_edit_btn_row < 0:
+                row.edit_btn.text = "Edit"
+            elif row.edit_btn.hovering:
+                if row_id == self.dragging_edit_btn_row:
+                    row.edit_btn.text = "Edit"  # No xfer happening
+                else:
+                    row.edit_btn.text = "[ To ]"
+            else:
+                if row_id == self.dragging_edit_btn_row:
+                    row.edit_btn.text = "From"
+                else:
+                    row.edit_btn.text = "[    ]"  # Drag Target
+
+    def release_edit_button(self, me):
+        if self.dragging_edit_btn_row >= 0:
+            mouse_xy = (int(Window.size[0] * me.spos[0]),
+                        int(Window.size[1] * me.spos[1]))
+            for row_id in self.row_lookup.keys():
+                row = self.row_lookup[row_id]
+                if row.edit_btn.collide_point(*row.edit_btn.to_widget(*mouse_xy)):
+                    if row_id != self.dragging_edit_btn_row:
+                        Clock.schedule_once(lambda dt, _dest_id=row_id, _src_id=self.dragging_edit_btn_row:
+                                            self.create_edit_popup(_dest_id, _src_id))
+                    break
+            self.dragging_edit_btn_row = -1
+            self.update_all_edit_buttons()
 
     def get_row_order_idx_at(self, scr_xy, constrain=True):
         scr_xy_px = (int(scr_xy[0] * Window.size[0]), int(scr_xy[1] * Window.size[1]))
@@ -503,6 +550,15 @@ class Boxes(FloatLayout):
             row = self.row_lookup[i]
             self._cached_cursor_col = row.textbox.cursor_col
 
+    def stop_active_timer(self):
+        if self.active_row_id >= 0:
+            row_id = self.active_row_id
+            if self.active_row_id in self.row_lookup:
+                self.row_lookup[self.active_row_id].timer_btn.state = 'normal'
+            self.active_row_id = -1
+            self.update_row_colors(row_id)
+            self._update_pause_btn(mode='pause', disabled=True)
+
     def add_row(self):
         i = self.activity_id_counter
         self.activity_id_counter += 1
@@ -611,76 +667,29 @@ class Boxes(FloatLayout):
             else:
                 return DISABLED_FG_COLOR
         clear_btn.calc_line_color = calc_clear_btn_line_color
-
         row.add_widget(clear_btn)
-
-        def create_popup(_):
-            edit_field = self._make_text_input('+/- Minutes')
-            ok_btn = MyButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
-            ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
-            ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
-
-            cancel_btn = MyButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
-            cancel_btn.calc_text_color = lambda: ACCENT_COLOR if cancel_btn.hovering else SECONDARY_COLOR
-            cancel_btn.calc_line_color = lambda: ACCENT_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
-
-            content = BoxLayout(orientation='vertical')
-            content.spacing = 4
-
-            content.add_widget(Widget())
-            content.add_widget(edit_field)
-            content.add_widget(Widget())
-
-            btn_row = BoxLayout(orientation='horizontal')
-            btn_row.size_hint = (1, None)
-            btn_row.height = f'{ROW_HEIGHT}sp'
-            btn_row.add_widget(Widget())
-            btn_row.add_widget(ok_btn)
-            btn_row.add_widget(cancel_btn)
-            btn_row.add_widget(Widget())
-            btn_row.spacing = 4
-            content.add_widget(btn_row)
-
-            popup = Popup(content=content, auto_dismiss=True)
-
-            popup.title = f"Edit {textinput.text or 'Untitled Activity'}"
-            popup.title_align = 'center'
-            popup.title_font = REGULAR_FONT
-            popup.title_size = REGULAR_FONT_SIZE
-
-            popup.separator_color = FG_COLOR
-
-            popup.size_hint = (None, None)
-            popup.size = ('400sp', '168sp')
-
-            def try_to_edit_time(_):
-                cur_text = edit_field.text
-                try:
-                    ms_to_add = int(1000 * 60 * float(cur_text))
-                    _row_data = self.get_row_data(i)
-                    if _row_data is not None:
-                        _row_data.set_time_ms(max(0, _row_data.get_time_ms() + ms_to_add))
-                except Exception:
-                    traceback.print_exc()
-                finally:
-                    popup.dismiss()
-
-            # bind the on_press event of the button to the dismiss function
-            ok_btn.bind(on_press=try_to_edit_time)
-            cancel_btn.bind(on_press=popup.dismiss)
-
-            edit_field.bind(on_text_validate=try_to_edit_time)
-            edit_field.focus = True
-
-            # open the popup
-            popup.open()
 
         edit_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
-        edit_btn.bind(on_release=create_popup)
-        edit_btn.calc_line_color = lambda: FG_COLOR if edit_btn.hovering else DISABLED_FG_COLOR
-        edit_btn.calc_text_color = lambda: FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
+        edit_btn.bind(on_release=lambda _: self.create_edit_popup(i))
+        edit_btn.bind(on_press=lambda _: self.start_dragging_edit_button(i))
+
+        def calc_edit_btn_colors(for_text):
+            if self.dragging_edit_btn_row < 0:
+                if for_text:
+                    return FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
+                else:
+                    return FG_COLOR if edit_btn.hovering else DISABLED_FG_COLOR
+            elif i == self.dragging_edit_btn_row:
+                return FG_COLOR if edit_btn.hovering else ACCENT_COLOR
+            elif not edit_btn.hovering:
+                return SECONDARY_COLOR if for_text else DISABLED_FG_COLOR
+            else:
+                return ACCENT_COLOR
+
+        edit_btn.calc_line_color = lambda: calc_edit_btn_colors(False)
+        edit_btn.calc_text_color = lambda: calc_edit_btn_colors(True)
         row.add_widget(edit_btn)
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
@@ -696,19 +705,104 @@ class Boxes(FloatLayout):
         remove_btn.text = "✖"
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         remove_btn.on_release = lambda: self.remove_row(i)
-        remove_btn.calc_line_color = lambda: ACCENT_COLOR if remove_btn.hovering else DISABLED_FG_COLOR
-        remove_btn.calc_text_color = lambda: ACCENT_COLOR if remove_btn.hovering else SECONDARY_COLOR
+        remove_btn.calc_line_color = lambda: CANCEL_COLOR if remove_btn.hovering else DISABLED_FG_COLOR
+        remove_btn.calc_text_color = lambda: CANCEL_COLOR if remove_btn.hovering else SECONDARY_COLOR
 
         row.add_widget(remove_btn)
 
         self.boxes.add_widget(row)
         self._update_boxes_height()
 
-        row_data = RowData(row, timer_btn, textinput)
+        row_data = RowData(row, timer_btn, textinput, edit_btn)
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
 
         self.update_row_colors(i)
+
+    def create_edit_popup(self, i, from_row_id=None):
+        if i not in self.row_lookup:
+            return
+        dest_row = self.row_lookup[i]
+
+        if from_row_id is not None and from_row_id in self.row_lookup:
+            from_row = self.row_lookup[from_row_id]
+        else:
+            from_row = None
+
+        edit_field = self._make_text_input('+/- Minutes')
+        ok_btn = MyButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
+        ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
+        ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
+
+        cancel_btn = MyButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
+        cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovering else SECONDARY_COLOR
+        cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
+
+        content = BoxLayout(orientation='vertical')
+        content.spacing = 4
+
+        content.add_widget(Widget())
+        content.add_widget(edit_field)
+        content.add_widget(Widget())
+
+        btn_row = BoxLayout(orientation='horizontal')
+        btn_row.size_hint = (1, None)
+        btn_row.height = f'{ROW_HEIGHT}sp'
+        btn_row.add_widget(Widget())
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        btn_row.add_widget(Widget())
+        btn_row.spacing = 4
+        content.add_widget(btn_row)
+
+        popup = Popup(content=content, auto_dismiss=True)
+
+        if from_row is None:
+            title_text = f"Edit {dest_row.textbox.text or 'Untitled Activity'}"
+        else:
+            title_text = f"Transfer to {dest_row.textbox.text or 'Untitled Activity'}"
+        if len(title_text) > 30:
+            title_text = title_text[:27] + "..."
+
+        popup.title = title_text
+        popup.title_align = 'center'
+        popup.title_font = REGULAR_FONT
+        popup.title_size = REGULAR_FONT_SIZE
+
+        popup.separator_color = FG_COLOR
+
+        popup.size_hint = (None, None)
+        popup.size = ('400sp', '168sp')
+
+        def try_to_edit_time(_):
+            cur_text = edit_field.text
+            try:
+                ms_to_add = int(1000 * 60 * float(cur_text))
+                if from_row is not None:
+                    new_from_time = max(0, from_row.get_time_ms() - ms_to_add)
+                    from_row.set_time_ms(new_from_time)
+                    if new_from_time == 0 and from_row_id == self.active_row_id:
+                        self.stop_active_timer()
+
+                new_dest_time = max(0, dest_row.get_time_ms() + ms_to_add)
+                dest_row.set_time_ms(new_dest_time)
+                if new_dest_time == 0 and i == self.active_row_id:
+                    self.stop_active_timer()
+
+            except Exception:
+                traceback.print_exc()
+            finally:
+                popup.dismiss()
+
+        # bind the on_press event of the button to the dismiss function
+        ok_btn.bind(on_press=try_to_edit_time)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        edit_field.bind(on_text_validate=try_to_edit_time)
+        edit_field.focus = True
+
+        # open the popup
+        popup.open()
 
     def _update_pause_btn(self, mode='pause', disabled=False):
         self.pause_btn.disabled = disabled
