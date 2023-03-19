@@ -91,6 +91,7 @@ Builder.load_string(f"""
 
 <Boxes>:
     id: _parent
+    scroller: _scroller
     boxes: _boxes 
     pause_btn: _pause_btn
     add_btn: _add_btn
@@ -103,6 +104,7 @@ Builder.load_string(f"""
         size: (self.texture_size[0], self.texture_size[1] * 1.25)
     
     MDScrollView:
+        id: _scroller
         effect_cls: 'ScrollEffect'
         do_scroll_x: False
         do_scroll_y: True
@@ -321,7 +323,65 @@ class Boxes(BoxLayout):
         self._build_pause_btn()
         self._build_add_btn()
 
+        self.floating_row = -1
+        Window.bind(on_motion=lambda _, etype, me: self.update_floating_row(etype, me))
+        Window.bind(on_touch_up=lambda *_: self.release_floating_row())
+
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
+
+    def start_dragging_row(self, i):
+        self.floating_row = i
+
+    def update_floating_row(self, etype, me):
+        if self.floating_row >= 0:
+            hover_order_idx = self.get_row_order_idx_at(me.spos, constrain=True)
+
+            new_ordering = []
+            for row_id in self.row_ordering:
+                if len(new_ordering) == hover_order_idx:
+                    new_ordering.append(-2)
+                if row_id >= 0 and row_id != self.floating_row:
+                    new_ordering.append(row_id)
+            if len(new_ordering) == hover_order_idx:
+                new_ordering.append(-2)
+
+            self.reorder_rows(new_ordering)
+
+    def release_floating_row(self):
+        if self.floating_row >= 0:
+            new_ordering = [(row_id if row_id >= 0 else self.floating_row) for row_id in self.row_ordering]
+            self.reorder_rows(new_ordering)
+
+            self.floating_row = -1
+
+    def get_row_order_idx_at(self, scr_xy, constrain=True):
+        scr_xy_px = (int(scr_xy[0] * Window.size[0]), int(scr_xy[1] * Window.size[1]))
+        box_xy = self.boxes.to_window(*self.boxes.pos)  # TODO check units on these
+        box_size = self.boxes.size
+        pos_rel_to_box = (scr_xy_px[0] - box_xy[0],
+                          box_xy[1] + box_size[1] - scr_xy_px[1])
+        row_order_idx = pos_rel_to_box[1] // (ROW_HEIGHT + SPACING)
+        if constrain:
+            row_order_idx = max(0, min(row_order_idx, len(self.row_ordering) - 1))
+
+        # print(f"INFO: {scr_xy_px=}, {box_xy=}, {box_size=}, {pos_rel_to_box=}, {row_order_idx=}")
+        return row_order_idx
+
+    def reorder_rows(self, new_ordering):
+        old_scroll_y = self.scroller.scroll_y
+        old_widgets = list(self.boxes.children)
+        for widget in old_widgets:
+            self.boxes.remove_widget(widget)
+
+        self.row_ordering = new_ordering
+        for i in self.row_ordering:
+            if i in self.row_lookup:
+                self.boxes.add_widget(self.row_lookup[i].row_widget)
+            else:
+                self.boxes.add_widget(Widget(size_hint=(1, None), height=f'{ROW_HEIGHT}sp'))
+
+        self._update_boxes_height()
+        self.scroller.scroll_y = old_scroll_y
 
     def inc_time(self, dt):
         if self.active_row_id in self.row_lookup:
@@ -597,6 +657,7 @@ class Boxes(BoxLayout):
         drag_btn.hover_cursor = 'size_ns'
         drag_btn.calc_line_color = lambda: FG_COLOR if drag_btn.hovering else DISABLED_FG_COLOR
         drag_btn.calc_text_color = lambda: FG_COLOR if drag_btn.hovering else SECONDARY_COLOR
+        drag_btn.bind(on_press=lambda _: self.start_dragging_row(i))
         row.add_widget(drag_btn)
 
         remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
