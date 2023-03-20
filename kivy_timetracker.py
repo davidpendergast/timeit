@@ -14,7 +14,7 @@ from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.properties import ColorProperty
 
-from kivymd.uix.behaviors import HoverBehavior
+from kivymd.uix.behaviors import HoverBehavior  # TODO can we eliminate this dependency
 
 from kivy.clock import Clock
 from kivy.config import Config
@@ -36,6 +36,33 @@ LabelBase.register(name=REGULAR_FONT,
 
 WINDOW_TITLE = "TimeIt"
 
+OK_TEXT = "Ok"
+CANCEL_TEXT = "Cancel"
+
+RESET_TEXT = "Reset"
+EDIT_TEXT = "Edit"
+EDIT_DRAG_FROM_TEXT = "From"
+EDIT_DRAG_TO_TEXT = "[ To ]"
+EDIT_DRAG_TARGET_TEXT = "[    ]"
+
+DRAG_SYMBOL_TEXT = "↕"
+REMOVE_SYMBOL_TEXT = "✖"
+
+PAUSE_TEXT = "Pause"
+PAUSED_TEXT = "Paused"
+RESUME_TEXT = "Resume"
+
+ADD_ACTIVITY_TEXT = "Add Activity"
+NEW_ACTIVITY_TEXT = "Activity {0}"
+
+EDIT_ACTIVITY_TEXT = "Edit {0}"
+TRANSFER_TIME_TEXT = "Transfer to {0}"
+UNTITLED_ACTIVITY_TEXT = "Untitled Activity"
+PLUS_MINUS_MINUTES_TEXT = "+/- Minutes"
+
+ZERO_TIME = "0:00:00"
+
+
 FG_COLOR = tuple(x/255. for x in (128, 222, 234))
 FG_COLOR_DIM = tuple(x * 0.333 for x in FG_COLOR)
 
@@ -55,7 +82,6 @@ TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
 SPACING = 4  # sp
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
-ZERO_TIME = "0:00:00"
 
 
 Builder.load_string(f"""
@@ -151,7 +177,7 @@ Builder.load_string(f"""
             FloatLayout:
             MyButton:
                 id: _add_btn
-                text: 'Add Activity'
+                text: '{ADD_ACTIVITY_TEXT}'
                 on_press: _parent.add_row()
                 font_size: '{REGULAR_FONT_SIZE}sp'
                 size_hint: (None, 1)
@@ -169,12 +195,10 @@ class RowData:
         self.elapsed_time = 0
 
     def add_time_ms(self, millis):
-        self.elapsed_time += millis
-        self.update_timer_btn_label()
-        self.update_colors()
+        self.set_time_ms(self.elapsed_time + millis)
 
     def set_time_ms(self, millis):
-        self.elapsed_time = millis
+        self.elapsed_time = max(0, millis)
         self.update_timer_btn_label()
         self.update_colors()
 
@@ -191,14 +215,11 @@ class RowData:
         self.timer_btn.text = self.get_time_str()
 
     def update_colors(self):
-        for widget in self.row_widget.children:  # TODO recurse
+        for widget in self.row_widget.children:
             if isinstance(widget, ColorUpdatable):
                 widget.update_colors()
 
 class ColorUpdatable:
-
-    def __init__(self, *args, **kwargs):
-        self.update_colors()
 
     def calc_text_color(self):
         return SECONDARY_COLOR
@@ -215,13 +236,6 @@ class ColorUpdatable:
 
 class LineBorderWidget(Widget, ColorUpdatable):
     line_color = ColorProperty(DISABLED_FG_COLOR)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.background_normal = ''
-        self.background_active = ''
-        self.background_disabled_normal = ''
-        self.background_disabled_down = ''
 
     def calc_line_color(self):
         return DISABLED_FG_COLOR
@@ -409,7 +423,6 @@ class Boxes(FloatLayout):
 
     def start_dragging_edit_button(self, i):
         self.dragging_edit_btn_row = i
-        print(f"INFO: started dragging edit button {i}")
 
     def update_all_edit_buttons(self):
         for row_id in self.row_lookup.keys():
@@ -417,17 +430,17 @@ class Boxes(FloatLayout):
             row.edit_btn.update_colors()
 
             if self.dragging_edit_btn_row < 0:
-                row.edit_btn.text = "Edit"
+                row.edit_btn.text = EDIT_TEXT
             elif row.edit_btn.hovering:
                 if row_id == self.dragging_edit_btn_row:
-                    row.edit_btn.text = "Edit"  # No xfer happening
+                    row.edit_btn.text = EDIT_TEXT  # No xfer happening
                 else:
-                    row.edit_btn.text = "[ To ]"
+                    row.edit_btn.text = EDIT_DRAG_TO_TEXT
             else:
                 if row_id == self.dragging_edit_btn_row:
-                    row.edit_btn.text = "From"
+                    row.edit_btn.text = EDIT_DRAG_FROM_TEXT
                 else:
-                    row.edit_btn.text = "[    ]"  # Drag Target
+                    row.edit_btn.text = EDIT_DRAG_TARGET_TEXT  # Drag Target
 
     def release_edit_button(self, me):
         if self.dragging_edit_btn_row >= 0:
@@ -453,7 +466,6 @@ class Boxes(FloatLayout):
         if constrain:
             row_order_idx = max(0, min(row_order_idx, len(self.row_ordering) - 1))
 
-        # print(f"INFO: {scr_xy_px=}, {box_xy=}, {box_size=}, {pos_rel_to_box=}, {row_order_idx=}")
         return row_order_idx
 
     def reorder_rows(self, new_ordering):
@@ -489,14 +501,14 @@ class Boxes(FloatLayout):
             row_data = self.row_lookup[self.active_row_id]
             caption_msg = f"{row_data.textbox.text} ~ {row_data.get_time_str()}"
         else:
-            caption_msg = "Paused"
+            caption_msg = PAUSED_TEXT
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
 
     def _update_foreground_color(self):
         set_fg_color(get_color_for_time())
         self.update_all_colors()
 
-    def get_row_data(self, row_i=None) -> RowData:
+    def get_row_data(self, row_i=None) -> typing.Optional[RowData]:
         if row_i is None:
             row_i = self.active_row_id
         if row_i in self.row_lookup:
@@ -519,12 +531,14 @@ class Boxes(FloatLayout):
 
             if self.active_row_id_before_pause[0] == i:
                 self.active_row_id_before_pause[0] = -1
-                self._update_pause_btn(mode='pause', disabled=True)
+                self.update_pause_btn(mode='pause', disabled=True)
 
             if self.active_row_id == i:
                 self.active_row_id = -1
                 self.update_row_colors(self.active_row_id)
-                self._update_pause_btn(mode='pause', disabled=True)
+                self.update_pause_btn(mode='pause', disabled=True)
+
+            self.update_title_img_color()
 
     def clear_row_time(self, i):
         if i in self.row_lookup:
@@ -533,10 +547,10 @@ class Boxes(FloatLayout):
             if i == self.active_row_id:
                 self.row_lookup[i].timer_btn.state = "normal"
                 self.active_row_id = -1
-                self._update_pause_btn(mode='pause', disabled=True)
+                self.update_pause_btn(mode='pause', disabled=True)
             elif i == self.active_row_id_before_pause[0]:
                 self.active_row_id_before_pause[0] = -1
-                self._update_pause_btn(mode='pause', disabled=True)
+                self.update_pause_btn(mode='pause', disabled=True)
 
             self.update_row_colors(i)
 
@@ -544,8 +558,11 @@ class Boxes(FloatLayout):
         if i in self.row_lookup:
             self.row_lookup[i].update_colors()
 
+    def update_title_img_color(self):
+        self.title_img.color = FG_COLOR if self.active_row_id >= 0 else FG_COLOR_DIM
+
     def update_all_colors(self):
-        self.title_img.color = FG_COLOR
+        self.update_title_img_color()
         for i in self.row_lookup:
             self.row_lookup[i].update_colors()
         self.pause_btn.update_colors()
@@ -562,9 +579,7 @@ class Boxes(FloatLayout):
             multiline=False,
             write_tab=False)
 
-        def on_focus(instance, value):
-            text_fld.update_colors()
-        text_fld.bind(focus=on_focus)
+        text_fld.bind(focus=lambda *_: text_fld.update_colors())
 
         return text_fld
 
@@ -592,7 +607,8 @@ class Boxes(FloatLayout):
                 self.row_lookup[self.active_row_id].timer_btn.state = 'normal'
             self.active_row_id = -1
             self.update_row_colors(row_id)
-            self._update_pause_btn(mode='pause', disabled=True)
+            self.update_title_img_color()
+            self.update_pause_btn(mode='pause', disabled=True)
 
     def add_row(self):
         i = self.activity_id_counter
@@ -615,22 +631,23 @@ class Boxes(FloatLayout):
             if btn.state == "down":
                 rows_to_update.add(self.active_row_id)
                 self.active_row_id = i
-                self._update_pause_btn(mode='pause', disabled=False)
+                self.update_pause_btn(mode='pause', disabled=False)
             else:
                 self.active_row_id = -1
-                self._update_pause_btn(mode='pause', disabled=True)
+                self.update_pause_btn(mode='pause', disabled=True)
 
             rows_to_update.add(i)
 
             for row_id in rows_to_update:
                 self.update_row_colors(row_id)
+            self.update_title_img_color()
 
         timer_btn.bind(on_press=on_timer_btn_press)
 
         def calc_timer_text_color():
             if timer_btn.disabled:
                 return DISABLED_FG_COLOR
-            elif timer_btn.state == "down":
+            elif timer_btn.state == 'down':
                 return BG_COLOR
             elif timer_btn.text in ('', ZERO_TIME):
                 return DISABLED_FG_COLOR
@@ -639,7 +656,7 @@ class Boxes(FloatLayout):
         timer_btn.calc_text_color = calc_timer_text_color
 
         def calc_timer_bg_color():
-            if timer_btn.state == "down":
+            if timer_btn.state == 'down':
                 return FG_COLOR if not timer_btn.disabled else FG_COLOR_DIM
             elif self.active_row_id_before_pause[0] == i:
                 return FG_COLOR_DIM
@@ -649,7 +666,7 @@ class Boxes(FloatLayout):
 
         row.add_widget(timer_btn)
 
-        textinput = self._make_text_input(hint_text=f"Activity {i + 1}")
+        textinput = self._make_text_input(hint_text=NEW_ACTIVITY_TEXT.format(f'{i + 1}'))
 
         def on_triple_tap(txt_fld):
             Clock.schedule_once(lambda dt: txt_fld.select_all())
@@ -696,7 +713,7 @@ class Boxes(FloatLayout):
         row.add_widget(textinput)
 
         reset_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
-        reset_btn.text = "Reset"
+        reset_btn.text = RESET_TEXT
         reset_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         reset_btn.on_release = lambda: self.clear_row_time(i)
 
@@ -716,7 +733,7 @@ class Boxes(FloatLayout):
         row.add_widget(reset_btn)
 
         edit_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
-        edit_btn.text = "Edit"
+        edit_btn.text = EDIT_TEXT
         edit_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         edit_btn.bind(on_release=lambda _: self.create_edit_popup(i))
         edit_btn.bind(on_press=lambda _: self.start_dragging_edit_button(i))
@@ -749,7 +766,7 @@ class Boxes(FloatLayout):
                 return (hover_color or FG_COLOR) if btn.hovering else base_line_color
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
-        drag_btn.text = "↕"
+        drag_btn.text = DRAG_SYMBOL_TEXT
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         drag_btn.hover_cursor = 'size_ns'
         drag_btn.calc_line_color = lambda: get_basic_btn_color(drag_btn, False)
@@ -758,7 +775,7 @@ class Boxes(FloatLayout):
         row.add_widget(drag_btn)
 
         remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
-        remove_btn.text = "✖"
+        remove_btn.text = REMOVE_SYMBOL_TEXT
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         remove_btn.on_release = lambda: self.remove_row(i)
         remove_btn.calc_line_color = lambda: get_basic_btn_color(remove_btn, False, hover_color=CANCEL_COLOR)
@@ -785,12 +802,12 @@ class Boxes(FloatLayout):
         else:
             from_row = None
 
-        edit_field = self._make_text_input('+/- Minutes')
-        ok_btn = MyButton(text='OK', font_size=f'{REGULAR_FONT_SIZE}sp')
+        edit_field = self._make_text_input(PLUS_MINUS_MINUTES_TEXT)
+        ok_btn = MyButton(text=OK_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
         ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
         ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
 
-        cancel_btn = MyButton(text='Cancel', font_size=f'{REGULAR_FONT_SIZE}sp')
+        cancel_btn = MyButton(text=CANCEL_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
         cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovering else SECONDARY_COLOR
         cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
 
@@ -814,9 +831,10 @@ class Boxes(FloatLayout):
         popup = Popup(content=content, auto_dismiss=True)
 
         if from_row is None:
-            title_text = f"Edit {dest_row.textbox.text or 'Untitled Activity'}"
+            title_text = EDIT_ACTIVITY_TEXT.format(f"{dest_row.textbox.text or UNTITLED_ACTIVITY_TEXT}")
         else:
-            title_text = f"Transfer to {dest_row.textbox.text or 'Untitled Activity'}"
+            title_text = TRANSFER_TIME_TEXT.format(f"{dest_row.textbox.text or UNTITLED_ACTIVITY_TEXT}")
+
         if len(title_text) > 30:
             title_text = title_text[:27] + "..."
 
@@ -850,23 +868,21 @@ class Boxes(FloatLayout):
             finally:
                 popup.dismiss()
 
-        # bind the on_press event of the button to the dismiss function
         ok_btn.bind(on_press=try_to_edit_time)
         cancel_btn.bind(on_press=popup.dismiss)
 
         edit_field.bind(on_text_validate=try_to_edit_time)
         edit_field.focus = True
 
-        # open the popup
         popup.open()
 
-    def _update_pause_btn(self, mode='pause', disabled=False):
+    def update_pause_btn(self, mode='pause', disabled=False):
         self.pause_btn.disabled = disabled
-        self.pause_btn.text = "Pause" if mode == 'pause' else "Resume"
+        self.pause_btn.text = PAUSE_TEXT if mode == 'pause' else RESUME_TEXT
         self.pause_btn.update_colors()
 
     def _build_pause_btn(self):
-        self.pause_btn.text = "Pause"
+        self.pause_btn.text = PAUSE_TEXT
         self.pause_btn.group = self._btn_group
 
         def calc_pause_btn_color(for_text):
@@ -889,7 +905,7 @@ class Boxes(FloatLayout):
             rows_to_update = []
             if btn.state == "down":
                 self.active_row_id_before_pause[0] = self.active_row_id
-                btn.text = "Resume"
+                btn.text = RESUME_TEXT
                 self.active_row_id = -1
                 rows_to_update.append(self.active_row_id_before_pause[0])
             else:
@@ -897,15 +913,16 @@ class Boxes(FloatLayout):
                     self.active_row_id = self.active_row_id_before_pause[0]
                     self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.state = "down"
                     rows_to_update.append(self.active_row_id_before_pause[0])
-                btn.text = "Pause"
+                btn.text = PAUSE_TEXT
                 self.active_row_id_before_pause[0] = -1
 
             btn.update_colors()
             for row_id in rows_to_update:
                 self.update_row_colors(row_id)
+            self.update_title_img_color()
 
         self.pause_btn.bind(on_press=on_btn_press)
-        self._update_pause_btn(mode='pause', disabled=True)
+        self.update_pause_btn(mode='pause', disabled=True)
 
     def _build_add_btn(self):
         self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovering else SECONDARY_COLOR
