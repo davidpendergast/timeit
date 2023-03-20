@@ -89,17 +89,24 @@ Builder.load_string(f"""
     font_size: '{REGULAR_FONT_SIZE}sp'
     
 <MyToggleButton>:
+    canvas.before:
+        Color:
+            rgba: self.background_color
+        Rectangle:
+            pos: self.pos[0] + 1, self.pos[1] + 1
+            size: self.size[0] - 2, self.size[1] - 2
     canvas.after:
         Color:
             rgba: self.line_color
         Line:
             width: 1
-            close: False
+            close: True
+            cap: 'square'
+            joint: 'miter'
             points: self.pos[0] + 1,                self.pos[1] + 1, \
                     self.pos[0] + self.size[0] - 1, self.pos[1] + 1, \
                     self.pos[0] + self.size[0] - 1, self.pos[1] + self.size[1] - 1, \
-                    self.pos[0] + 1,                self.pos[1] + self.size[1] - 1, \
-                    self.pos[0] + 1,                self.pos[1] + 1
+                    self.pos[0] + 1,                self.pos[1] + self.size[1] - 1
                     
 <Boxes>:
     id: _parent
