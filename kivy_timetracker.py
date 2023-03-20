@@ -72,11 +72,11 @@ Builder.load_string(f"""
         Line:
             width: 1
             close: False
-            points: self.pos[0], self.pos[1] + 1, \
-                    self.pos[0] + self.size[0], self.pos[1] + 1, \
-                    self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
-                    self.pos[0], self.pos[1] + self.size[1], \
-                    self.pos[0] + 1, self.pos[1]
+            points: self.pos[0],                    self.pos[1] + 1, \
+                    self.pos[0] + self.size[0] - 1, self.pos[1] + 1, \
+                    self.pos[0] + self.size[0] - 1, self.pos[1] + self.size[1] - 1, \
+                    self.pos[0],                    self.pos[1] + self.size[1] - 1, \
+                    self.pos[0],                    self.pos[1]
     
 <MyTextInput>:
     padding_y: [self.height / 2.0 - (self.line_height / 2.0) * len(self._lines), 0]
@@ -95,11 +95,11 @@ Builder.load_string(f"""
         Line:
             width: 1
             close: False
-            points: self.pos[0] + 1, self.pos[1] + 1, \
-                    self.pos[0] + self.size[0], self.pos[1] + 1, \
-                    self.pos[0] + self.size[0], self.pos[1] + self.size[1], \
-                    self.pos[0] + 1, self.pos[1] + self.size[1], \
-                    self.pos[0] + 1, self.pos[1]
+            points: self.pos[0] + 1,                self.pos[1] + 1, \
+                    self.pos[0] + self.size[0] - 1, self.pos[1] + 1, \
+                    self.pos[0] + self.size[0] - 1, self.pos[1] + self.size[1] - 1, \
+                    self.pos[0] + 1,                self.pos[1] + self.size[1] - 1, \
+                    self.pos[0] + 1,                self.pos[1] + 1
                     
 <Boxes>:
     id: _parent
@@ -222,6 +222,7 @@ class LineBorderWidget(Widget, ColorUpdatable):
     def update_colors(self):
         self.line_color = self.calc_line_color()
 
+
 class MyButton(Button, HoverBehavior, LineBorderWidget):
 
     def __init__(self, *args, **kwargs):
@@ -306,7 +307,7 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
 
     def calc_line_color(self):
         if self.hovering and not self.disabled:
-            return BG_COLOR if self.state == 'down' else FG_COLOR
+            return FG_COLOR_DIM if self.state == 'down' else FG_COLOR
         else:
             return FG_COLOR if self.state == 'down' else DISABLED_FG_COLOR
 
@@ -614,7 +615,9 @@ class Boxes(FloatLayout):
         timer_btn.bind(on_press=on_timer_btn_press)
 
         def calc_timer_text_color():
-            if timer_btn.disabled or timer_btn.state == "down":
+            if timer_btn.disabled:
+                return DISABLED_FG_COLOR
+            elif timer_btn.state == "down":
                 return BG_COLOR
             elif timer_btn.text in ('', ZERO_TIME):
                 return DISABLED_FG_COLOR
@@ -678,16 +681,6 @@ class Boxes(FloatLayout):
         textinput.calc_line_color = calc_border_color
 
         row.add_widget(textinput)
-
-        def calc_btn_line_color(btn):
-            if btn.disabled:
-                return None
-            elif self.active_row_id == i or btn.hovering:
-                return FG_COLOR
-            elif self.active_row_id_before_pause[0]:
-                return FG_COLOR_DIM
-            else:
-                return None
 
         reset_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         reset_btn.text = "Reset"
@@ -756,7 +749,7 @@ class Boxes(FloatLayout):
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         remove_btn.on_release = lambda: self.remove_row(i)
         remove_btn.calc_line_color = lambda: get_basic_btn_color(remove_btn, False, hover_color=CANCEL_COLOR)
-        remove_btn.calc_text_color = lambda: get_basic_btn_color(remove_btn, True)
+        remove_btn.calc_text_color = lambda: get_basic_btn_color(remove_btn, True, hover_color=CANCEL_COLOR)
 
         row.add_widget(remove_btn)
 
@@ -868,7 +861,7 @@ class Boxes(FloatLayout):
                 return DISABLED_FG_COLOR
             elif self.pause_btn.state == 'down':
                 if self.pause_btn.hovering:
-                    return BG_COLOR
+                    return BG_COLOR if for_text else FG_COLOR_DIM
                 else:
                     return BG_COLOR if for_text else FG_COLOR
             elif self.pause_btn.hovering:
