@@ -508,8 +508,8 @@ class Boxes(FloatLayout):
                 self._update_pause_btn(mode='pause', disabled=True)
 
             if self.active_row_id == i:
-                self.update_row_colors(self.active_row_id)
                 self.active_row_id = -1
+                self.update_row_colors(self.active_row_id)
                 self._update_pause_btn(mode='pause', disabled=True)
 
     def clear_row_time(self, i):
@@ -518,7 +518,6 @@ class Boxes(FloatLayout):
 
             if i == self.active_row_id:
                 self.row_lookup[i].timer_btn.state = "normal"
-                self.row_lookup[i].timer_btn.update_colors()
                 self.active_row_id = -1
                 self._update_pause_btn(mode='pause', disabled=True)
             elif i == self.active_row_id_before_pause[0]:
@@ -594,19 +593,23 @@ class Boxes(FloatLayout):
         timer_btn.text = ZERO_TIME
 
         def on_timer_btn_press(btn):
+            rows_to_update = set()
             if self.active_row_id_before_pause[0] >= 0:
-                was_paused_id = self.active_row_id_before_pause[0]
+                rows_to_update.add(self.active_row_id_before_pause[0])
                 self.active_row_id_before_pause[0] = -1
-                self.update_row_colors(was_paused_id)
 
             if btn.state == "down":
-                self.update_row_colors(self.active_row_id)  # update old row
+                rows_to_update.add(self.active_row_id)
                 self.active_row_id = i
                 self._update_pause_btn(mode='pause', disabled=False)
             else:
                 self.active_row_id = -1
                 self._update_pause_btn(mode='pause', disabled=True)
-            self.update_row_colors(i)
+
+            rows_to_update.add(i)
+
+            for row_id in rows_to_update:
+                self.update_row_colors(row_id)
 
         timer_btn.bind(on_press=on_timer_btn_press)
 
@@ -663,33 +666,48 @@ class Boxes(FloatLayout):
         textinput.on_touch_down = store_cursor_col_later_wrapper(textinput.on_touch_down)
         textinput.on_touch_up = store_cursor_col_later_wrapper(textinput.on_touch_up)
 
+        def calc_border_color():
+            if textinput.focused:
+                return SECONDARY_COLOR
+            elif i == self.active_row_id:
+                return FG_COLOR
+            elif i == self.active_row_id_before_pause[0]:
+                return FG_COLOR_DIM
+            else:
+                return DISABLED_FG_COLOR
+        textinput.calc_line_color = calc_border_color
+
         row.add_widget(textinput)
 
-        clear_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
-        clear_btn.text = "Reset"
-        clear_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
-        clear_btn.on_release = lambda: self.clear_row_time(i)
+        def calc_btn_line_color(btn):
+            if btn.disabled:
+                return None
+            elif self.active_row_id == i or btn.hovering:
+                return FG_COLOR
+            elif self.active_row_id_before_pause[0]:
+                return FG_COLOR_DIM
+            else:
+                return None
 
-        def calc_clear_btn_text_color():
+        reset_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
+        reset_btn.text = "Reset"
+        reset_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
+        reset_btn.on_release = lambda: self.clear_row_time(i)
+
+        def calc_reset_btn_color(for_text):
+            base_line_color = FG_COLOR if self.active_row_id == i else \
+                (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
             if timer_btn.text in ('', ZERO_TIME) and \
                     i not in (self.active_row_id, self.active_row_id_before_pause[0]):
-                return DISABLED_FG_COLOR
-            elif clear_btn.hovering:
+                return DISABLED_FG_COLOR if for_text else base_line_color
+            elif reset_btn.hovering:
                 return FG_COLOR
             else:
-                return SECONDARY_COLOR
-        clear_btn.calc_text_color = calc_clear_btn_text_color
+                return SECONDARY_COLOR if for_text else base_line_color
+        reset_btn.calc_text_color = lambda: calc_reset_btn_color(True)
+        reset_btn.calc_line_color = lambda: calc_reset_btn_color(False)
 
-        def calc_clear_btn_line_color():
-            if timer_btn.text in ('', ZERO_TIME) and \
-                    i not in (self.active_row_id, self.active_row_id_before_pause[0]):
-                return DISABLED_FG_COLOR
-            elif clear_btn.hovering:
-                return FG_COLOR
-            else:
-                return DISABLED_FG_COLOR
-        clear_btn.calc_line_color = calc_clear_btn_line_color
-        row.add_widget(clear_btn)
+        row.add_widget(reset_btn)
 
         edit_btn = MyButton(size=(f"{ROW_HEIGHT * 2}sp", row_height), size_hint=(None, None))
         edit_btn.text = "Edit"
@@ -698,15 +716,17 @@ class Boxes(FloatLayout):
         edit_btn.bind(on_press=lambda _: self.start_dragging_edit_button(i))
 
         def calc_edit_btn_colors(for_text):
+            base_line_color = FG_COLOR if self.active_row_id == i else \
+                (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
             if self.dragging_edit_btn_row < 0:
                 if for_text:
                     return FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
                 else:
-                    return FG_COLOR if edit_btn.hovering else DISABLED_FG_COLOR
+                    return FG_COLOR if edit_btn.hovering else base_line_color
             elif i == self.dragging_edit_btn_row:
                 return FG_COLOR if edit_btn.hovering else ACCENT_COLOR
             elif not edit_btn.hovering:
-                return SECONDARY_COLOR if for_text else DISABLED_FG_COLOR
+                return SECONDARY_COLOR if for_text else base_line_color
             else:
                 return ACCENT_COLOR
 
@@ -714,12 +734,20 @@ class Boxes(FloatLayout):
         edit_btn.calc_text_color = lambda: calc_edit_btn_colors(True)
         row.add_widget(edit_btn)
 
+        def get_basic_btn_color(btn, for_text, hover_color=None):
+            if for_text:
+                return (hover_color or FG_COLOR) if btn.hovering else SECONDARY_COLOR
+            else:
+                base_line_color = FG_COLOR if self.active_row_id == i else \
+                    (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
+                return (hover_color or FG_COLOR) if btn.hovering else base_line_color
+
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = "↕"
         drag_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         drag_btn.hover_cursor = 'size_ns'
-        drag_btn.calc_line_color = lambda: FG_COLOR if drag_btn.hovering else DISABLED_FG_COLOR
-        drag_btn.calc_text_color = lambda: FG_COLOR if drag_btn.hovering else SECONDARY_COLOR
+        drag_btn.calc_line_color = lambda: get_basic_btn_color(drag_btn, False)
+        drag_btn.calc_text_color = lambda: get_basic_btn_color(drag_btn, True)
         drag_btn.bind(on_touch_down=lambda btn, me: drag_btn.collide_point(*me.pos) and self.start_dragging_row(i, me))
         row.add_widget(drag_btn)
 
@@ -727,8 +755,8 @@ class Boxes(FloatLayout):
         remove_btn.text = "✖"
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
         remove_btn.on_release = lambda: self.remove_row(i)
-        remove_btn.calc_line_color = lambda: CANCEL_COLOR if remove_btn.hovering else DISABLED_FG_COLOR
-        remove_btn.calc_text_color = lambda: CANCEL_COLOR if remove_btn.hovering else SECONDARY_COLOR
+        remove_btn.calc_line_color = lambda: get_basic_btn_color(remove_btn, False, hover_color=CANCEL_COLOR)
+        remove_btn.calc_text_color = lambda: get_basic_btn_color(remove_btn, True)
 
         row.add_widget(remove_btn)
 
@@ -851,22 +879,26 @@ class Boxes(FloatLayout):
         self.pause_btn.calc_text_color = lambda: calc_pause_btn_color(True)
         self.pause_btn.calc_line_color = lambda: calc_pause_btn_color(False)
 
-        def on_checkbox_active(btn):
+        def on_btn_press(btn):
+            rows_to_update = []
             if btn.state == "down":
                 self.active_row_id_before_pause[0] = self.active_row_id
-                self.update_row_colors(self.active_row_id_before_pause[0])
                 btn.text = "Resume"
                 self.active_row_id = -1
+                rows_to_update.append(self.active_row_id_before_pause[0])
             else:
                 if self.active_row_id_before_pause[0] in self.row_lookup:
                     self.active_row_id = self.active_row_id_before_pause[0]
                     self.row_lookup[self.active_row_id_before_pause[0]].timer_btn.state = "down"
-                    self.update_row_colors(self.active_row_id_before_pause[0])
+                    rows_to_update.append(self.active_row_id_before_pause[0])
                 btn.text = "Pause"
                 self.active_row_id_before_pause[0] = -1
-            btn.update_colors()
 
-        self.pause_btn.bind(on_press=on_checkbox_active)
+            btn.update_colors()
+            for row_id in rows_to_update:
+                self.update_row_colors(row_id)
+
+        self.pause_btn.bind(on_press=on_btn_press)
         self._update_pause_btn(mode='pause', disabled=True)
 
     def _build_add_btn(self):
