@@ -354,6 +354,7 @@ class Boxes(FloatLayout):
         Window.bind(on_motion=lambda _, etype, me: self.handle_mouse_motion(etype, me))
         Window.bind(on_touch_up=lambda _, me: self.handle_mouse_release(me))
 
+        self.last_time_seen_ms = int(time.time() * 1000)
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
     def handle_mouse_motion(self, etype, me):
@@ -471,10 +472,15 @@ class Boxes(FloatLayout):
         self._update_boxes_height()
         self.scroller.scroll_y = old_scroll_y
 
-    def inc_time(self, dt):
+    def inc_time(self, _):
+        cur_time_ms = int(time.time() * 1000)
+        dt = cur_time_ms - self.last_time_seen_ms
+        self.last_time_seen_ms = cur_time_ms
+
         if self.active_row_id in self.row_lookup:
             row_data = self.row_lookup[self.active_row_id]
-            row_data.add_time_ms(int(dt * 1000))
+            row_data.add_time_ms(dt)
+
         self._update_foreground_color()
         self._update_window_caption()
 
