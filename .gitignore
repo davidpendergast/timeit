@@ -3,3 +3,5 @@
 __pycache__/*
 gifs/*.mp4
 test.py
+dist/build/*
+dist/dist/*

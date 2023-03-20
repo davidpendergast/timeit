@@ -20,9 +20,16 @@ from kivy.clock import Clock
 from kivy.config import Config
 from kivy.core.window import Window
 from kivy.core.text import LabelBase
+from kivy.resources import resource_add_path, resource_find
 
 import os
+import sys
+
 os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
+
+# pyinstaller stuff
+if hasattr(sys, '_MEIPASS'):
+    resource_add_path(os.path.join(sys._MEIPASS))
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
 Window.size = (800, 480)
@@ -152,7 +159,7 @@ Builder.load_string(f"""
             size_hint: (1, None)
             size: (self.texture_size[0], self.texture_size[1] * 1.25)
         
-        MDScrollView:
+        ScrollView:
             id: _scroller
             effect_cls: 'ScrollEffect'
             do_scroll_x: False
@@ -955,6 +962,7 @@ def hsv_to_rgb(h, s, v):
     if i == 3: return (p, q, v)
     if i == 4: return (t, p, v)
     if i == 5: return (v, p, q)
+
 
 def get_color_for_time(t_ms=None):
     if t_ms is None:
