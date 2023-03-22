@@ -14,13 +14,13 @@ from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.properties import ColorProperty
 
-from kivymd.uix.behaviors import HoverBehavior  # TODO can we eliminate this dependency
-
 from kivy.clock import Clock
 from kivy.config import Config
 from kivy.core.window import Window
 from kivy.core.text import LabelBase
-from kivy.resources import resource_add_path, resource_find
+from kivy.resources import resource_add_path
+
+from hoverable import HoverBehavior
 
 import os
 import sys
@@ -84,6 +84,14 @@ BG_COLOR = tuple(x/255. for x in (0, 0, 0))
 DISABLED_FG_COLOR = tuple(x/255. for x in (130, 130, 130))
 ACCENT_COLOR = tuple(x/255. for x in (245, 245, 66))
 CANCEL_COLOR = (1, 0, 0)
+
+
+# 0=Red, 30=Orange, 60=Yellow, 90=Yellow-Green, 120=Green
+# 150=Sea Foam, 180=Cyan, 210=Light Blue, 240=Dark Blue,
+# 270=Purple, 300=Magenta, 330=Pink, 360=Red
+RAINBOW_HUE_OFFSET = 0  # color at 12am
+
+RAINBOW_PERIOD_HOURS = 12  # 12 hour cycle
 
 TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
@@ -155,7 +163,7 @@ Builder.load_string(f"""
             
         Image:
             id: _title_img
-            source: 'logo_white.png'
+            source: 'logo.png'
             size_hint: (1, None)
             size: (self.texture_size[0], self.texture_size[1] * 1.25)
         
@@ -268,7 +276,7 @@ class MyButton(Button, HoverBehavior, LineBorderWidget):
         self.update_colors()
 
     def calc_line_color(self):
-        if self.disabled or not self.hovering:
+        if self.disabled or not self.hovered:
             return DISABLED_FG_COLOR
         else:
             return FG_COLOR
@@ -305,11 +313,11 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.background_normal = 'button_texture.png'
-        self.background_active = 'button_texture.png'
-        self.background_down = 'button_texture.png'
-        self.background_disabled_normal = 'button_texture.png'
-        self.background_disabled_down = 'button_texture.png'
+        self.background_normal = 'transparent.png'
+        self.background_active = 'transparent.png'
+        self.background_down = 'transparent.png'
+        self.background_disabled_normal = 'transparent.png'
+        self.background_disabled_down = 'transparent.png'
 
         self.update_colors()
 
@@ -334,7 +342,7 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
             return FG_COLOR
 
     def calc_line_color(self):
-        if self.hovering and not self.disabled:
+        if self.hovered and not self.disabled:
             return FG_COLOR_DIM if self.state == 'down' else FG_COLOR
         else:
             return FG_COLOR if self.state == 'down' else DISABLED_FG_COLOR
@@ -438,7 +446,7 @@ class Boxes(FloatLayout):
 
             if self.dragging_edit_btn_row < 0:
                 row.edit_btn.text = EDIT_TEXT
-            elif row.edit_btn.hovering:
+            elif row.edit_btn.hovered:
                 if row_id == self.dragging_edit_btn_row:
                     row.edit_btn.text = EDIT_TEXT  # No xfer happening
                 else:
@@ -730,7 +738,7 @@ class Boxes(FloatLayout):
             if timer_btn.text in ('', ZERO_TIME) and \
                     i not in (self.active_row_id, self.active_row_id_before_pause[0]):
                 return DISABLED_FG_COLOR if for_text else base_line_color
-            elif reset_btn.hovering:
+            elif reset_btn.hovered:
                 return FG_COLOR
             else:
                 return SECONDARY_COLOR if for_text else base_line_color
@@ -750,12 +758,12 @@ class Boxes(FloatLayout):
                 (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
             if self.dragging_edit_btn_row < 0:
                 if for_text:
-                    return FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
+                    return FG_COLOR if edit_btn.hovered else SECONDARY_COLOR
                 else:
-                    return FG_COLOR if edit_btn.hovering else base_line_color
+                    return FG_COLOR if edit_btn.hovered else base_line_color
             elif i == self.dragging_edit_btn_row:
-                return FG_COLOR if edit_btn.hovering else ACCENT_COLOR
-            elif not edit_btn.hovering:
+                return FG_COLOR if edit_btn.hovered else ACCENT_COLOR
+            elif not edit_btn.hovered:
                 return SECONDARY_COLOR if for_text else base_line_color
             else:
                 return ACCENT_COLOR
@@ -766,11 +774,11 @@ class Boxes(FloatLayout):
 
         def get_basic_btn_color(btn, for_text, hover_color=None):
             if for_text:
-                return (hover_color or FG_COLOR) if btn.hovering else SECONDARY_COLOR
+                return (hover_color or FG_COLOR) if btn.hovered else SECONDARY_COLOR
             else:
                 base_line_color = FG_COLOR if self.active_row_id == i else \
                     (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
-                return (hover_color or FG_COLOR) if btn.hovering else base_line_color
+                return (hover_color or FG_COLOR) if btn.hovered else base_line_color
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = DRAG_SYMBOL_TEXT
@@ -811,12 +819,12 @@ class Boxes(FloatLayout):
 
         edit_field = self._make_text_input(PLUS_MINUS_MINUTES_TEXT)
         ok_btn = MyButton(text=OK_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
-        ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
-        ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
+        ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovered else SECONDARY_COLOR
+        ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovered else DISABLED_FG_COLOR
 
         cancel_btn = MyButton(text=CANCEL_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
-        cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovering else SECONDARY_COLOR
-        cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
+        cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovered else SECONDARY_COLOR
+        cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovered else DISABLED_FG_COLOR
 
         content = BoxLayout(orientation='vertical')
         content.spacing = 4
@@ -869,7 +877,7 @@ class Boxes(FloatLayout):
                 dest_row.set_time_ms(new_dest_time)
                 if new_dest_time == 0 and i == self.active_row_id:
                     self.stop_active_timer()
-
+                    
             except Exception:
                 traceback.print_exc()
             finally:
@@ -896,11 +904,11 @@ class Boxes(FloatLayout):
             if self.pause_btn.disabled:
                 return DISABLED_FG_COLOR
             elif self.pause_btn.state == 'down':
-                if self.pause_btn.hovering:
+                if self.pause_btn.hovered:
                     return BG_COLOR if for_text else FG_COLOR_DIM
                 else:
                     return BG_COLOR if for_text else FG_COLOR
-            elif self.pause_btn.hovering:
+            elif self.pause_btn.hovered:
                 return FG_COLOR
             else:
                 return SECONDARY_COLOR if for_text else DISABLED_FG_COLOR
@@ -932,8 +940,8 @@ class Boxes(FloatLayout):
         self.update_pause_btn(mode='pause', disabled=True)
 
     def _build_add_btn(self):
-        self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovering else SECONDARY_COLOR
-        self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovering else DISABLED_FG_COLOR
+        self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovered else SECONDARY_COLOR
+        self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovered else DISABLED_FG_COLOR
 
 
 class TimeTrackerApp(App):
@@ -965,11 +973,15 @@ def hsv_to_rgb(h, s, v):
 
 
 def get_color_for_time(t_ms=None):
-    if t_ms is None:
-        t_ms = int(time.time() * 1000)
-    ms_per_day = 8.64e+7
-    time_of_day = t_ms % ms_per_day
-    hsv = (360 * time_of_day / ms_per_day, 0.666, 1)
+    if RAINBOW_PERIOD_HOURS <= 0:
+        h = RAINBOW_HUE_OFFSET
+    else:
+        if t_ms is None:
+            t_ms = int(time.time() * 1000)
+        time_of_day = t_ms % (24 * 60 * 60 * 1000)
+        ms_per_period = RAINBOW_PERIOD_HOURS * 60 * 60 * 1000
+        h = 360 * (time_of_day % ms_per_period) / ms_per_period + RAINBOW_HUE_OFFSET
+    hsv = (h, 0.666, 1)
     rgb = hsv_to_rgb(*hsv)
     return rgb
 
