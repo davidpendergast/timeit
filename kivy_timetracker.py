@@ -877,7 +877,7 @@ class Boxes(FloatLayout):
                 dest_row.set_time_ms(new_dest_time)
                 if new_dest_time == 0 and i == self.active_row_id:
                     self.stop_active_timer()
-                    
+
             except Exception:
                 traceback.print_exc()
             finally:
