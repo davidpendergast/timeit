@@ -20,8 +20,6 @@ from kivy.core.window import Window
 from kivy.core.text import LabelBase
 from kivy.resources import resource_add_path
 
-from hoverable import HoverBehavior
-
 import os
 import sys
 
@@ -97,6 +95,8 @@ TITLE_FONT_SIZE = 64
 REGULAR_FONT_SIZE = 20
 SPACING = 4  # sp
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
+
+global_popup_var = []
 
 
 Builder.load_string(f"""
@@ -249,6 +249,36 @@ class ColorUpdatable:
         pass
 
 
+class HoverBehavior(Widget):
+
+    def __init__(self, *args, in_popup=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.in_popup = in_popup
+        self.hovering = False
+        Window.bind(mouse_pos=self._handle_mouse_move)
+
+    def _handle_mouse_move(self, window, pos):
+        in_widget = False
+        if self.get_root_window() is None:
+            in_widget = False
+        elif self.collide_point(*self.to_widget(*pos)):
+            in_widget = True
+
+        popup_active = len(global_popup_var) > 0
+        if self.in_popup ^ popup_active:
+            in_widget = False
+
+        if in_widget != self.hovering:
+            self.hovering = in_widget
+            self.on_enter(window, pos) if self.hovering else self.on_leave(window, pos)
+
+    def on_enter(self, window, pos):
+        pass
+
+    def on_leave(self, window, pos):
+        pass
+
+
 class LineBorderWidget(Widget, ColorUpdatable):
     line_color = ColorProperty(DISABLED_FG_COLOR)
 
@@ -276,7 +306,7 @@ class MyButton(Button, HoverBehavior, LineBorderWidget):
         self.update_colors()
 
     def calc_line_color(self):
-        if self.disabled or not self.hovered:
+        if self.disabled or not self.hovering:
             return DISABLED_FG_COLOR
         else:
             return FG_COLOR
@@ -342,7 +372,7 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
             return FG_COLOR
 
     def calc_line_color(self):
-        if self.hovered and not self.disabled:
+        if self.hovering and not self.disabled:
             return FG_COLOR_DIM if self.state == 'down' else FG_COLOR
         else:
             return FG_COLOR if self.state == 'down' else DISABLED_FG_COLOR
@@ -446,7 +476,7 @@ class Boxes(FloatLayout):
 
             if self.dragging_edit_btn_row < 0:
                 row.edit_btn.text = EDIT_TEXT
-            elif row.edit_btn.hovered:
+            elif row.edit_btn.hovering:
                 if row_id == self.dragging_edit_btn_row:
                     row.edit_btn.text = EDIT_TEXT  # No xfer happening
                 else:
@@ -738,7 +768,7 @@ class Boxes(FloatLayout):
             if timer_btn.text in ('', ZERO_TIME) and \
                     i not in (self.active_row_id, self.active_row_id_before_pause[0]):
                 return DISABLED_FG_COLOR if for_text else base_line_color
-            elif reset_btn.hovered:
+            elif reset_btn.hovering:
                 return FG_COLOR
             else:
                 return SECONDARY_COLOR if for_text else base_line_color
@@ -758,12 +788,12 @@ class Boxes(FloatLayout):
                 (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
             if self.dragging_edit_btn_row < 0:
                 if for_text:
-                    return FG_COLOR if edit_btn.hovered else SECONDARY_COLOR
+                    return FG_COLOR if edit_btn.hovering else SECONDARY_COLOR
                 else:
-                    return FG_COLOR if edit_btn.hovered else base_line_color
+                    return FG_COLOR if edit_btn.hovering else base_line_color
             elif i == self.dragging_edit_btn_row:
-                return FG_COLOR if edit_btn.hovered else ACCENT_COLOR
-            elif not edit_btn.hovered:
+                return FG_COLOR if edit_btn.hovering else ACCENT_COLOR
+            elif not edit_btn.hovering:
                 return SECONDARY_COLOR if for_text else base_line_color
             else:
                 return ACCENT_COLOR
@@ -774,11 +804,11 @@ class Boxes(FloatLayout):
 
         def get_basic_btn_color(btn, for_text, hover_color=None):
             if for_text:
-                return (hover_color or FG_COLOR) if btn.hovered else SECONDARY_COLOR
+                return (hover_color or FG_COLOR) if btn.hovering else SECONDARY_COLOR
             else:
                 base_line_color = FG_COLOR if self.active_row_id == i else \
                     (FG_COLOR_DIM if self.active_row_id_before_pause[0] == i else DISABLED_FG_COLOR)
-                return (hover_color or FG_COLOR) if btn.hovered else base_line_color
+                return (hover_color or FG_COLOR) if btn.hovering else base_line_color
 
         drag_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         drag_btn.text = DRAG_SYMBOL_TEXT
@@ -819,12 +849,12 @@ class Boxes(FloatLayout):
 
         edit_field = self._make_text_input(PLUS_MINUS_MINUTES_TEXT)
         ok_btn = MyButton(text=OK_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
-        ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovered else SECONDARY_COLOR
-        ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovered else DISABLED_FG_COLOR
+        ok_btn.calc_text_color = lambda: FG_COLOR if ok_btn.hovering else SECONDARY_COLOR
+        ok_btn.calc_line_color = lambda: FG_COLOR if ok_btn.hovering else DISABLED_FG_COLOR
 
         cancel_btn = MyButton(text=CANCEL_TEXT, font_size=f'{REGULAR_FONT_SIZE}sp')
-        cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovered else SECONDARY_COLOR
-        cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovered else DISABLED_FG_COLOR
+        cancel_btn.calc_text_color = lambda: CANCEL_COLOR if cancel_btn.hovering else SECONDARY_COLOR
+        cancel_btn.calc_line_color = lambda: CANCEL_COLOR if cancel_btn.hovering else DISABLED_FG_COLOR
 
         content = BoxLayout(orientation='vertical')
         content.spacing = 4
@@ -844,6 +874,8 @@ class Boxes(FloatLayout):
         content.add_widget(btn_row)
 
         popup = Popup(content=content, auto_dismiss=True)
+
+        global_popup_var.append(popup)
 
         if from_row is None:
             title_text = EDIT_ACTIVITY_TEXT.format(f"{dest_row.textbox.text or UNTITLED_ACTIVITY_TEXT}")
@@ -884,10 +916,16 @@ class Boxes(FloatLayout):
                 popup.dismiss()
 
         ok_btn.bind(on_press=try_to_edit_time)
+        ok_btn.in_popup = True
+
         cancel_btn.bind(on_press=popup.dismiss)
+        cancel_btn.in_popup = True
 
         edit_field.bind(on_text_validate=try_to_edit_time)
         edit_field.focus = True
+        edit_field.in_popup = True
+
+        popup.bind(on_dismiss=lambda _: global_popup_var.clear())
 
         popup.open()
 
@@ -904,11 +942,11 @@ class Boxes(FloatLayout):
             if self.pause_btn.disabled:
                 return DISABLED_FG_COLOR
             elif self.pause_btn.state == 'down':
-                if self.pause_btn.hovered:
+                if self.pause_btn.hovering:
                     return BG_COLOR if for_text else FG_COLOR_DIM
                 else:
                     return BG_COLOR if for_text else FG_COLOR
-            elif self.pause_btn.hovered:
+            elif self.pause_btn.hovering:
                 return FG_COLOR
             else:
                 return SECONDARY_COLOR if for_text else DISABLED_FG_COLOR
@@ -940,8 +978,8 @@ class Boxes(FloatLayout):
         self.update_pause_btn(mode='pause', disabled=True)
 
     def _build_add_btn(self):
-        self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovered else SECONDARY_COLOR
-        self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovered else DISABLED_FG_COLOR
+        self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovering else SECONDARY_COLOR
+        self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovering else DISABLED_FG_COLOR
 
 
 class TimeTrackerApp(App):
