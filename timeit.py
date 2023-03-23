@@ -447,7 +447,7 @@ class Boxes(FloatLayout):
                     new_ordering.append(row_id)
             if len(new_ordering) == hover_order_idx:
                 new_ordering.append(-2)
-            self.reorder_rows(new_ordering)
+            self.reorder_rows(new_ordering, update_hints=False)
 
             if self.floating_row_widget is None:
                 self.floating_row_widget = BoxLayout(size_hint=(None, None),
@@ -466,7 +466,7 @@ class Boxes(FloatLayout):
                 self.floating_row_widget = None
 
             new_ordering = [(row_id if row_id >= 0 else self.floating_row) for row_id in self.row_ordering]
-            self.reorder_rows(new_ordering)
+            self.reorder_rows(new_ordering, update_hints=True)
             self.floating_row = -1
 
     def start_dragging_edit_button(self, i):
@@ -516,7 +516,7 @@ class Boxes(FloatLayout):
 
         return row_order_idx
 
-    def reorder_rows(self, new_ordering):
+    def reorder_rows(self, new_ordering, update_hints=True):
         old_scroll_y = self.scroller.scroll_y
         old_widgets = list(self.boxes.children)
         for widget in old_widgets:
@@ -529,8 +529,18 @@ class Boxes(FloatLayout):
             else:
                 self.boxes.add_widget(Widget(size_hint=(1, None), height=f'{ROW_HEIGHT}sp'))
 
+        if update_hints:
+            self._update_row_hint_texts()
+
         self._update_boxes_height()
         self.scroller.scroll_y = old_scroll_y
+
+    def _update_row_hint_texts(self):
+        hint_text_cnt = 1
+        for i in self.row_ordering:
+            if i in self.row_lookup:
+                self.row_lookup[i].textbox.hint_text = NEW_ACTIVITY_TEXT.format(hint_text_cnt)
+            hint_text_cnt += 1
 
     def inc_time(self, _):
         cur_time_ms = int(time.time() * 1000)
@@ -547,7 +557,7 @@ class Boxes(FloatLayout):
     def _update_window_caption(self):
         if self.active_row_id in self.row_lookup:
             row_data = self.row_lookup[self.active_row_id]
-            caption_msg = f"{row_data.textbox.text} ~ {row_data.get_time_str()}"
+            caption_msg = f"{row_data.textbox.text or UNTITLED_ACTIVITY_TEXT} ~ {row_data.get_time_str()}"
         else:
             caption_msg = PAUSED_TEXT
         self._parent.title = f"{WINDOW_TITLE} [{caption_msg}]"
@@ -587,6 +597,7 @@ class Boxes(FloatLayout):
                 self.update_pause_btn(mode='pause', disabled=True)
 
             self.update_title_img_color()
+            self._update_row_hint_texts()
 
     def clear_row_time(self, i):
         if i in self.row_lookup:
@@ -714,7 +725,8 @@ class Boxes(FloatLayout):
 
         row.add_widget(timer_btn)
 
-        textinput = self._make_text_input(hint_text=NEW_ACTIVITY_TEXT.format(f'{i + 1}'))
+        textinput = self._make_text_input()
+        textinput.hint_text = NEW_ACTIVITY_TEXT.format(f'{len(self.row_ordering) + 1}')
 
         def on_triple_tap(txt_fld):
             Clock.schedule_once(lambda dt: txt_fld.select_all())
