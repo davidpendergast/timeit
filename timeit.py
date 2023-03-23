@@ -33,11 +33,14 @@ Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
 Window.size = (800, 480)
 
 REGULAR_FONT = 'DejaVuSansMono'
+
+FONT_DIR = 'resources/fonts/dejavu-sans-mono'
 LabelBase.register(name=REGULAR_FONT,
-                   fn_regular='fonts/dejavu-sans-mono/DejaVuSansMono.ttf',
-                   fn_italic='fonts/dejavu-sans-mono/DejaVuSansMono-Oblique.ttf',
-                   fn_bold='fonts/dejavu-sans-mono/DejaVuSansMono-Bold.ttf',
-                   fn_bolditalic='fonts/dejavu-sans-mono/DejaVuSansMono-BoldOblique.ttf',)
+                   fn_regular=f'{FONT_DIR}/DejaVuSansMono.ttf',
+                   fn_italic=f'{FONT_DIR}/DejaVuSansMono-Oblique.ttf',
+                   fn_bold=f'{FONT_DIR}/DejaVuSansMono-Bold.ttf',
+                   fn_bolditalic=f'{FONT_DIR}/DejaVuSansMono-BoldOblique.ttf',)
+TRANSPARENT_PNG = 'resources/imgs/transparent.png'
 
 WINDOW_TITLE = "TimeIt"
 
@@ -163,7 +166,7 @@ Builder.load_string(f"""
             
         Image:
             id: _title_img
-            source: 'logo.png'
+            source: 'resources/imgs/logo.png'
             size_hint: (1, None)
             size: (self.texture_size[0], self.texture_size[1] * 1.25)
         
@@ -343,11 +346,11 @@ class MyToggleButton(ToggleButton, HoverBehavior, ColorUpdatable):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.background_normal = 'transparent.png'
-        self.background_active = 'transparent.png'
-        self.background_down = 'transparent.png'
-        self.background_disabled_normal = 'transparent.png'
-        self.background_disabled_down = 'transparent.png'
+        self.background_normal = TRANSPARENT_PNG
+        self.background_active = TRANSPARENT_PNG
+        self.background_down = TRANSPARENT_PNG
+        self.background_disabled_normal = TRANSPARENT_PNG
+        self.background_disabled_down = TRANSPARENT_PNG
 
         self.update_colors()
 
@@ -989,7 +992,7 @@ class TimeTrackerApp(App):
 
     def build(self):
         self.title = WINDOW_TITLE
-        self.icon = 'icon/icon64.png'
+        self.icon = 'resources/icon/icon64.png'
         return Boxes(self)
 
 
