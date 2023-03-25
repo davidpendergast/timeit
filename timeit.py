@@ -100,6 +100,7 @@ SPACING = 4  # sp
 ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 
 global_popup_var = []
+last_mouse_pos = (0, 0)
 
 
 Builder.load_string(f"""
@@ -205,11 +206,12 @@ Builder.load_string(f"""
 
 class RowData:
 
-    def __init__(self, row_widget, timer_btn, textbox, edit_btn):
+    def __init__(self, row_widget, timer_btn, textbox, edit_btn, remove_btn):
         self.row_widget = row_widget
         self.timer_btn = timer_btn
         self.textbox = textbox
         self.edit_btn = edit_btn
+        self.remove_btn = remove_btn
         self.elapsed_time = 0
 
     def add_time_ms(self, millis):
@@ -261,6 +263,9 @@ class HoverBehavior(Widget):
         Window.bind(mouse_pos=self._handle_mouse_move)
 
     def _handle_mouse_move(self, window, pos):
+        global last_mouse_pos
+        last_mouse_pos = pos
+
         in_widget = False
         if self.get_root_window() is None:
             in_widget = False
@@ -273,12 +278,12 @@ class HoverBehavior(Widget):
 
         if in_widget != self.hovering:
             self.hovering = in_widget
-            self.on_enter(window, pos) if self.hovering else self.on_leave(window, pos)
+            self.on_enter(pos) if self.hovering else self.on_leave(pos)
 
-    def on_enter(self, window, pos):
+    def on_enter(self, pos):
         pass
 
-    def on_leave(self, window, pos):
+    def on_leave(self, pos):
         pass
 
 
@@ -578,11 +583,31 @@ class Boxes(FloatLayout):
         n = len(self.boxes.children)
         self.boxes.height = f"{ROW_HEIGHT * n + int(str(self.boxes.spacing)[:-2]) * (n - 1)}sp"
 
-    def remove_row(self, i):
+        # XXX otherwise the rows will float in the middle of the scrollpane until you jibble them
+        if self.scroller.height > self.boxes.height:
+            self.scroller.scroll_y = 1
+
+    def simulate_mouse_hover_after_layout_change(self, widgets):
+        if last_mouse_pos is not None:
+            for widget in widgets:
+                if isinstance(widget, HoverBehavior):
+                    if widget.collide_point(*widget.to_widget(*last_mouse_pos)):
+                        widget.hovering = True
+                        widget.on_enter(last_mouse_pos)
+                        if isinstance(widget, ColorUpdatable):
+                            widget.update_colors()
+                        break
+
+    def remove_row(self, i, simulate_hover_evt=False):
         if i in self.row_lookup:
+            old_boxes_height = self.boxes.height
+            old_scroll_y = self.scroller.scroll_y
+
             row_widget = self.row_lookup[i].row_widget
             self.boxes.remove_widget(row_widget)
             self._update_boxes_height()
+
+            old_idx = self.row_ordering.index(i)
 
             del self.row_lookup[i]
             self.row_ordering.remove(i)
@@ -595,6 +620,18 @@ class Boxes(FloatLayout):
                 self.active_row_id = -1
                 self.update_row_colors(self.active_row_id)
                 self.update_pause_btn(mode='pause', disabled=True)
+
+            new_boxes_height = self.boxes.height
+            if 0 < self.scroller.scroll_y < 1:
+                # if possible, adjust the scroll_y to keep remaining items' onscreen positions the same
+                view_h = self.scroller.height
+                new_scroll_y = 1 - (old_boxes_height - view_h) / (new_boxes_height - view_h) * (1 - old_scroll_y)
+                self.scroller.scroll_y = min(1, max(0, new_scroll_y))
+
+            if simulate_hover_evt:
+                # highlight the new button that ends up underneath the mouse
+                all_rm_btns = [data.remove_btn for data in self.row_lookup.values()]
+                Clock.schedule_once(lambda _: self.simulate_mouse_hover_after_layout_change(all_rm_btns))
 
             self.update_title_img_color()
             self._update_row_hint_texts()
@@ -837,7 +874,7 @@ class Boxes(FloatLayout):
         remove_btn = MyButton(size=(row_height, row_height), size_hint=(None, None))
         remove_btn.text = REMOVE_SYMBOL_TEXT
         remove_btn.font_size = f'{REGULAR_FONT_SIZE}sp'
-        remove_btn.on_release = lambda: self.remove_row(i)
+        remove_btn.on_release = lambda: self.remove_row(i, simulate_hover_evt=True)
         remove_btn.calc_line_color = lambda: get_basic_btn_color(remove_btn, False, hover_color=CANCEL_COLOR)
         remove_btn.calc_text_color = lambda: get_basic_btn_color(remove_btn, True, hover_color=CANCEL_COLOR)
 
@@ -846,7 +883,7 @@ class Boxes(FloatLayout):
         self.boxes.add_widget(row)
         self._update_boxes_height()
 
-        row_data = RowData(row, timer_btn, textinput, edit_btn)
+        row_data = RowData(row, timer_btn, textinput, edit_btn, remove_btn)
         self.row_lookup[i] = row_data
         self.row_ordering.append(i)
 
