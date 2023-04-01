@@ -1,6 +1,7 @@
 import traceback
 import typing
 import time
+import re
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -40,6 +41,7 @@ LabelBase.register(name=REGULAR_FONT,
                    fn_italic=f'{FONT_DIR}/DejaVuSansMono-Oblique.ttf',
                    fn_bold=f'{FONT_DIR}/DejaVuSansMono-Bold.ttf',
                    fn_bolditalic=f'{FONT_DIR}/DejaVuSansMono-BoldOblique.ttf',)
+
 TRANSPARENT_PNG = 'resources/imgs/transparent.png'
 
 WINDOW_TITLE = "TimeIt"
@@ -101,6 +103,23 @@ ROW_HEIGHT = int(2 * REGULAR_FONT_SIZE)
 
 global_popup_var = []
 last_mouse_pos = (0, 0)
+
+
+def safe_eval_time_string(expression):
+    """Takes an expression like `45.5 + 1:20 + 30 / 2` and returns its value (e.g. 140.5)."""
+
+    def decolonize(match_obj):
+        if match_obj.group(1) is not None:
+            split = match_obj.group(1).split(":")
+            hours = int(split[0]) if split[0] else 0
+            return str(hours * 60 + int(split[1]))
+
+    no_colons = re.sub(r"(\d*:\d+)", decolonize, expression)
+
+    if re.match(r"[\d.+\-*/\w()]*", no_colons):
+        return float(eval(no_colons))
+    else:
+        raise ValueError(f"Illegal expression: {expression}")
 
 
 Builder.load_string(f"""
@@ -950,7 +969,8 @@ class Boxes(FloatLayout):
         def try_to_edit_time(_):
             cur_text = edit_field.text
             try:
-                ms_to_add = int(1000 * 60 * float(cur_text))
+                minutes_to_add = safe_eval_time_string(cur_text)
+                ms_to_add = int(1000 * 60 * minutes_to_add)
                 if from_row is not None:
                     new_from_time = max(0, from_row.get_time_ms() - ms_to_add)
                     from_row.set_time_ms(new_from_time)
