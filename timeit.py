@@ -54,6 +54,7 @@ EDIT_TEXT = "Edit"
 EDIT_DRAG_FROM_TEXT = "From"
 EDIT_DRAG_TO_TEXT = "[ To ]"
 EDIT_DRAG_TARGET_TEXT = "[    ]"
+EDIT_DRAG_ALL_TEXT = "[100%]"
 
 XFER_ALL_PATTERN = re.compile(r'(?i)\s*all\s*')
 
@@ -427,6 +428,7 @@ class Boxes(FloatLayout):
         self.floating_row = -1
         self.floating_row_widget = None
         self.dragging_edit_btn_row = -1
+        self.dragging_edit_mode = None
 
         self._cached_cursor_col = -1
 
@@ -449,6 +451,8 @@ class Boxes(FloatLayout):
         if self.floating_row >= 0:
             Clock.schedule_once(lambda dt: self.update_floating_row(me.spos))
         if self.dragging_edit_btn_row >= 0:
+            if self.dragging_edit_mode is None and me.button is not None:
+                self.dragging_edit_mode = 'all' if me.button == 'right' else 'normal'
             self.update_all_edit_buttons()
 
     def handle_mouse_release(self, me):
@@ -509,7 +513,7 @@ class Boxes(FloatLayout):
                 if row_id == self.dragging_edit_btn_row:
                     row.edit_btn.text = EDIT_TEXT  # No xfer happening
                 else:
-                    row.edit_btn.text = EDIT_DRAG_TO_TEXT
+                    row.edit_btn.text = EDIT_DRAG_TO_TEXT if self.dragging_edit_mode != 'all' else EDIT_DRAG_ALL_TEXT
             else:
                 if row_id == self.dragging_edit_btn_row:
                     row.edit_btn.text = EDIT_DRAG_FROM_TEXT
@@ -524,10 +528,18 @@ class Boxes(FloatLayout):
                 row = self.row_lookup[row_id]
                 if row.edit_btn.collide_point(*row.edit_btn.to_widget(*mouse_xy)):
                     if row_id != self.dragging_edit_btn_row:
-                        Clock.schedule_once(lambda dt, _dest_id=row_id, _src_id=self.dragging_edit_btn_row:
-                                            self.create_edit_popup(_dest_id, _src_id))
+                        if self.dragging_edit_mode == 'all':
+                            dest_row = self.get_row_data(row_id)
+                            from_row = self.get_row_data(self.dragging_edit_btn_row)
+                            if dest_row is not None and from_row is not None and from_row != dest_row:
+                                all_ms = from_row.get_time_ms()
+                                self._transfer_time_between_rows(all_ms, dest_row, from_row)
+                        else:
+                            Clock.schedule_once(lambda dt, _dest_id=row_id, _src_id=self.dragging_edit_btn_row:
+                                                self.create_edit_popup(_dest_id, _src_id))
                     break
             self.dragging_edit_btn_row = -1
+            self.dragging_edit_mode = None
             self.update_all_edit_buttons()
 
     def get_row_order_idx_at(self, scr_xy, constrain=True):
@@ -866,10 +878,10 @@ class Boxes(FloatLayout):
                     return FG_COLOR if edit_btn.hovering else base_line_color
             elif i == self.dragging_edit_btn_row:
                 return FG_COLOR if edit_btn.hovering else ACCENT_COLOR
-            elif not edit_btn.hovering:
-                return SECONDARY_COLOR if for_text else base_line_color
-            else:
+            elif edit_btn.hovering:
                 return ACCENT_COLOR
+            else:
+                return SECONDARY_COLOR if for_text else base_line_color
 
         edit_btn.calc_line_color = lambda: calc_edit_btn_colors(False)
         edit_btn.calc_text_color = lambda: calc_edit_btn_colors(True)
@@ -978,16 +990,7 @@ class Boxes(FloatLayout):
                     minutes_to_add = safe_eval_time_string(cur_text)
                     ms_to_add = int(1000 * 60 * minutes_to_add)
 
-                if from_row is not None:
-                    new_from_time = max(0, from_row.get_time_ms() - ms_to_add)
-                    from_row.set_time_ms(new_from_time)
-                    if new_from_time == 0 and from_row_id == self.active_row_id:
-                        self.stop_active_timer()
-
-                new_dest_time = max(0, dest_row.get_time_ms() + ms_to_add)
-                dest_row.set_time_ms(new_dest_time)
-                if new_dest_time == 0 and i == self.active_row_id:
-                    self.stop_active_timer()
+                self._transfer_time_between_rows(ms_to_add, dest_row, from_row)
 
             except Exception:
                 traceback.print_exc()
@@ -1005,8 +1008,26 @@ class Boxes(FloatLayout):
         edit_field.in_popup = True
 
         popup.bind(on_dismiss=lambda _: global_popup_var.clear())
-
         popup.open()
+
+    def _transfer_time_between_rows(self, ms_to_add, dest_row: RowData, from_row: RowData=None):
+        if isinstance(from_row, int):
+            from_row = self.get_row_data(from_row)
+        if from_row is not None:
+            new_from_time = max(0, from_row.get_time_ms() - ms_to_add)
+            from_row.set_time_ms(new_from_time)
+            if new_from_time == 0 and self.is_active(from_row):
+                self.stop_active_timer()
+
+        if isinstance(dest_row, int):
+            dest_row = self.get_row_data(dest_row)
+        new_dest_time = max(0, dest_row.get_time_ms() + ms_to_add)
+        dest_row.set_time_ms(new_dest_time)
+        if new_dest_time == 0 and self.is_active(dest_row):
+            self.stop_active_timer()
+
+    def is_active(self, row: RowData):
+        return self.active_row_id in self.row_lookup and self.row_lookup[self.active_row_id] is row
 
     def update_pause_btn(self, mode='pause', disabled=False):
         self.pause_btn.disabled = disabled
