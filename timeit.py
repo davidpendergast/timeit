@@ -55,6 +55,8 @@ EDIT_DRAG_FROM_TEXT = "From"
 EDIT_DRAG_TO_TEXT = "[ To ]"
 EDIT_DRAG_TARGET_TEXT = "[    ]"
 
+XFER_ALL_PATTERN = re.compile(r'(?i)\s*all\s*')
+
 DRAG_SYMBOL_TEXT = "↕"
 REMOVE_SYMBOL_TEXT = "✖"
 
@@ -969,8 +971,13 @@ class Boxes(FloatLayout):
         def try_to_edit_time(_):
             cur_text = edit_field.text
             try:
-                minutes_to_add = safe_eval_time_string(cur_text)
-                ms_to_add = int(1000 * 60 * minutes_to_add)
+                if re.match(XFER_ALL_PATTERN, cur_text):
+                    # If you type "all", transfer everything
+                    ms_to_add = from_row.get_time_ms() if from_row is not None else 0
+                else:
+                    minutes_to_add = safe_eval_time_string(cur_text)
+                    ms_to_add = int(1000 * 60 * minutes_to_add)
+
                 if from_row is not None:
                     new_from_time = max(0, from_row.get_time_ms() - ms_to_add)
                     from_row.set_time_ms(new_from_time)
