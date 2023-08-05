@@ -1,2 +1,2 @@
-ttkthemes>=3.2.2
 kivy==2.1.0
+appdirs>=1.4.4

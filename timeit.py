@@ -1,3 +1,4 @@
+import json
 import traceback
 import typing
 import time
@@ -29,6 +30,20 @@ os.environ["SDL_MOUSE_FOCUS_CLICKTHROUGH"] = '1'
 # pyinstaller stuff
 if hasattr(sys, '_MEIPASS'):
     resource_add_path(os.path.join(sys._MEIPASS))
+
+DO_AUTOSAVES = True
+AUTOSAVE_INTERVAL_SECS = 5 * 60
+
+AUTO_SAVE_DIR = None
+if DO_AUTOSAVES:
+    try:
+        import appdirs
+        AUTO_SAVE_DIR = os.path.join(appdirs.user_data_dir("TimeIt", "Ghast"), "autosaves")
+    except ImportError:
+        DO_AUTOSAVES = False
+        print("ERROR: appdirs isn't installed, disabling autosaves")
+        traceback.print_exc()
+
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')  # red dots begone
 Window.size = (800, 480)
@@ -216,6 +231,20 @@ Builder.load_string(f"""
                 size_hint: (None, 1)
                 width: '{ROW_HEIGHT * 4}sp'
             FloatLayout:
+            # MyButton:
+            #     id: _save_btn
+            #     text: 'Save'
+            #     on_press: _parent.save_to_disk()
+            #     font_size: '{REGULAR_FONT_SIZE}sp'
+            #     size_hint: (None, 1)
+            #     width: '{ROW_HEIGHT * 4 + SPACING * 2}sp'
+            # MyButton:
+            #     id: _load_btn
+            #     text: 'Load'
+            #     on_press: _parent.load_from_disk()
+            #     font_size: '{REGULAR_FONT_SIZE}sp'
+            #     size_hint: (None, 1)
+            #     width: '{ROW_HEIGHT * 4 + SPACING * 2}sp'
             MyButton:
                 id: _add_btn
                 text: '{ADD_ACTIVITY_TEXT}'
@@ -260,6 +289,16 @@ class RowData:
         for widget in self.row_widget.children:
             if isinstance(widget, ColorUpdatable):
                 widget.update_colors()
+
+    def to_json(self):
+        return {
+            'elapsed_time': self.elapsed_time,
+            'text': self.textbox.text
+        }
+
+    def from_json(self, blob):
+        self.elapsed_time = int(blob['elapsed_time'])
+        self.textbox.text = str(blob['text'])
 
 class ColorUpdatable:
 
@@ -445,6 +484,7 @@ class Boxes(FloatLayout):
         Window.bind(on_touch_up=lambda _, me: self.handle_mouse_release(me))
 
         self.last_time_seen_ms = int(time.time() * 1000)
+        self.last_autosave_time_ms = self.last_time_seen_ms
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
 
     def handle_mouse_motion(self, etype, me):
@@ -589,6 +629,10 @@ class Boxes(FloatLayout):
             row_data = self.row_lookup[self.active_row_id]
             row_data.add_time_ms(dt)
 
+        if DO_AUTOSAVES and 0 < AUTOSAVE_INTERVAL_SECS < (cur_time_ms - self.last_autosave_time_ms) / 1000:
+            self.last_autosave_time_ms = cur_time_ms
+            self.save_to_disk()
+
         self._update_foreground_color()
         self._update_window_caption()
 
@@ -639,8 +683,6 @@ class Boxes(FloatLayout):
             row_widget = self.row_lookup[i].row_widget
             self.boxes.remove_widget(row_widget)
             self._update_boxes_height()
-
-            old_idx = self.row_ordering.index(i)
 
             del self.row_lookup[i]
             self.row_ordering.remove(i)
@@ -922,6 +964,8 @@ class Boxes(FloatLayout):
 
         self.update_row_colors(i)
 
+        return i, row_data
+
     def create_edit_popup(self, i, from_row_id=None):
         if i not in self.row_lookup:
             return
@@ -1081,6 +1125,72 @@ class Boxes(FloatLayout):
         self.add_btn.calc_text_color = lambda: FG_COLOR if self.add_btn.hovering else SECONDARY_COLOR
         self.add_btn.calc_line_color = lambda: FG_COLOR if self.add_btn.hovering else DISABLED_FG_COLOR
 
+    def get_default_autosave_filepath(self, and_create=True):
+        if AUTO_SAVE_DIR is not None:
+            if and_create:
+                os.makedirs(AUTO_SAVE_DIR, exist_ok=True)
+            return os.path.join(AUTO_SAVE_DIR, "autosave.json")
+        else:
+            return None
+
+    def save_to_disk(self, filepath='default'):
+        try:
+            if filepath == 'default':
+                filepath = self.get_default_autosave_filepath()
+            if filepath is not None:
+                blob = self.to_json()
+                with open(filepath, 'w') as fp:
+                    json.dump(blob, fp)
+        except Exception:
+            print(f"ERROR: failed to autosave to {filepath}")
+            traceback.print_exc()
+
+    def load_from_disk(self, filepath='default'):
+        try:
+            if filepath == 'default':
+                filepath = self.get_default_autosave_filepath()
+            if filepath is not None and os.path.exists(filepath):
+                with open(filepath, 'r') as fp:
+                    blob = json.load(fp)
+                self.from_json(blob)
+                print(f"INFO: Loaded autosave data from {filepath}")
+            else:
+                print("INFO: No autosave file found (fresh launch)")
+        except Exception:
+            print(f"ERROR: failed to load autosave data from {filepath}")
+            traceback.print_exc()
+
+    def to_json(self):
+        return {
+            'version': '1.0',
+            'timestamp_ms': int(time.time() * 1000),
+            'active_row_id': self.active_row_id,
+            'row_lookup': {str(row_id): self.row_lookup[row_id].to_json() for row_id in self.row_lookup},
+            'row_ordering': list(self.row_ordering)
+        }
+
+    def from_json(self, blob):
+        for row_id in list(self.row_lookup.keys()):
+            self.remove_row(row_id)
+
+        time_since_save = int(time.time() * 1000) - int(blob['timestamp_ms'])
+        pause_btn_enabled = False
+
+        for old_row_id in blob['row_ordering']:
+            row_blob = blob['row_lookup'][str(old_row_id)]
+            row_id, new_row = self.add_row()
+            new_row.from_json(row_blob)
+
+            if old_row_id == blob['active_row_id']:
+                self.active_row_id = row_id
+                new_row.add_time_ms(time_since_save)
+                new_row.timer_btn.state = "down"
+                pause_btn_enabled = True
+
+            new_row.update_timer_btn_label()
+
+        self.update_pause_btn(mode='pause', disabled=not pause_btn_enabled)
+        self.update_all_colors()
 
 class TimeTrackerApp(App):
 
@@ -1090,7 +1200,13 @@ class TimeTrackerApp(App):
     def build(self):
         self.title = WINDOW_TITLE
         self.icon = 'resources/icon/icon64.png'
-        return Boxes(self)
+        res = Boxes(self)
+
+        if DO_AUTOSAVES:
+            # load most recent autosave if it exists
+            res.load_from_disk()
+
+        return res
 
 
 def hsv_to_rgb(h, s, v):
