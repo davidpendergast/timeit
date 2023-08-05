@@ -32,7 +32,7 @@ if hasattr(sys, '_MEIPASS'):
     resource_add_path(os.path.join(sys._MEIPASS))
 
 DO_AUTOSAVES = True
-AUTOSAVE_INTERVAL_SECS = 5 * 60
+AUTOSAVE_INTERVAL_SECS = 2
 
 AUTO_SAVE_DIR = None
 if DO_AUTOSAVES:
@@ -486,6 +486,10 @@ class Boxes(FloatLayout):
         self.last_time_seen_ms = int(time.time() * 1000)
         self.last_autosave_time_ms = self.last_time_seen_ms
         self.timer = Clock.schedule_interval(self.inc_time, 0.5)
+
+        if DO_AUTOSAVES:
+            # do an autosave when the window is closed
+            Window.bind(on_request_close=lambda *_: self.save_to_disk())
 
     def handle_mouse_motion(self, etype, me):
         if self.floating_row >= 0:
@@ -1161,12 +1165,18 @@ class Boxes(FloatLayout):
             traceback.print_exc()
 
     def to_json(self):
+        ordering = list(self.row_ordering)
+        if self.floating_row >= 0 and -2 in ordering:
+            # XXX If we're currently dragging a row, the ordering list will have -2
+            # at that row's index as a placeholder. So swap it out~
+            ordering[ordering.index(-2)] = self.floating_row
+
         return {
             'version': '1.0',
             'timestamp_ms': int(time.time() * 1000),
             'active_row_id': self.active_row_id,
             'row_lookup': {str(row_id): self.row_lookup[row_id].to_json() for row_id in self.row_lookup},
-            'row_ordering': list(self.row_ordering)
+            'row_ordering': ordering
         }
 
     def from_json(self, blob):
@@ -1177,17 +1187,18 @@ class Boxes(FloatLayout):
         pause_btn_enabled = False
 
         for old_row_id in blob['row_ordering']:
-            row_blob = blob['row_lookup'][str(old_row_id)]
-            row_id, new_row = self.add_row()
-            new_row.from_json(row_blob)
+            if str(old_row_id) in blob['row_lookup']:
+                row_blob = blob['row_lookup'][str(old_row_id)]
+                row_id, new_row = self.add_row()
+                new_row.from_json(row_blob)
 
-            if old_row_id == blob['active_row_id']:
-                self.active_row_id = row_id
-                new_row.add_time_ms(time_since_save)
-                new_row.timer_btn.state = "down"
-                pause_btn_enabled = True
+                if old_row_id == blob['active_row_id']:
+                    self.active_row_id = row_id
+                    new_row.add_time_ms(time_since_save)
+                    new_row.timer_btn.state = "down"
+                    pause_btn_enabled = True
 
-            new_row.update_timer_btn_label()
+                new_row.update_timer_btn_label()
 
         self.update_pause_btn(mode='pause', disabled=not pause_btn_enabled)
         self.update_all_colors()
