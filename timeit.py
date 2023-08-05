@@ -1210,7 +1210,7 @@ class TimeTrackerApp(App):
 
     def build(self):
         self.title = WINDOW_TITLE
-        self.icon = 'resources/icon/icon64.png'
+        self.icon = 'resources/icons/icon64.png'
         res = Boxes(self)
 
         if DO_AUTOSAVES:
