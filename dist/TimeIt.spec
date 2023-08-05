@@ -5,10 +5,10 @@ block_cipher = None
 
 
 a = Analysis(
-    ['..\\kivy_timetracker.py'],
+    ['..\\timeit.py'],
     pathex=[],
     binaries=[],
-    datas=[('..\\fonts\\', 'fonts\\'), ('..\\icon\\', 'icon\\'), ('..\\button_texture.png', '.'), ('..\\logo_white.png', '.')],
+    datas=[('..\\resources', 'resources\\')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -41,5 +41,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='..\\icon\\icon64.ico',
+    icon='..\\resources\\icons\\icon64.ico',
 )

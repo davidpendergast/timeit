@@ -32,7 +32,7 @@ if hasattr(sys, '_MEIPASS'):
     resource_add_path(os.path.join(sys._MEIPASS))
 
 DO_AUTOSAVES = True
-AUTOSAVE_INTERVAL_SECS = 2
+AUTOSAVE_INTERVAL_SECS = 5 * 60
 
 AUTO_SAVE_DIR = None
 if DO_AUTOSAVES:
